@@ -1,0 +1,213 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "Mock Ocelot API",
+    "version": "v1"
+  },
+  "paths": {
+    "/api/users/{id}": {
+      "get": {
+        "tags": ["Users"],
+        "summary": "Get user information by ID",
+        "description": "Retrieves detailed information about a specific user.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Unique identifier of the user",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "includeDetails",
+            "in": "query",
+            "required": false,
+            "description": "Whether to include additional user details",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orders": {
+      "post": {
+        "tags": ["Orders"],
+        "summary": "Create a new order",
+        "description": "Creates a new order with items and shipping information.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "UserDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "details": {
+            "$ref": "#/components/schemas/UserDetails"
+          }
+        }
+      },
+      "UserDetails": {
+        "type": "object",
+        "properties": {
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastLogin": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "OrderRequest": {
+        "type": "object",
+        "required": ["userId", "items", "shippingAddress"],
+        "properties": {
+          "userId": {
+            "type": "integer",
+            "format": "int32",
+            "description": "ID of the user placing the order"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderItem"
+            }
+          },
+          "shippingAddress": {
+            "$ref": "#/components/schemas/ShippingAddress"
+          },
+          "priority": {
+            "type": "string",
+            "enum": ["Standard", "Express"],
+            "default": "Standard"
+          }
+        }
+      },
+      "OrderItem": {
+        "type": "object",
+        "required": ["productId", "productName", "quantity", "unitPrice"],
+        "properties": {
+          "productId": {
+            "type": "string"
+          },
+          "productName": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "unitPrice": {
+            "type": "number",
+            "format": "decimal"
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "ShippingAddress": {
+        "type": "object",
+        "required": ["street", "city", "state", "zipCode", "country"],
+        "properties": {
+          "street": {
+            "type": "string"
+          },
+          "city": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "zipCode": {
+            "type": "string"
+          },
+          "country": {
+            "type": "string"
+          }
+        }
+      },
+      "OrderDto": {
+        "type": "object",
+        "properties": {
+          "orderId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "total": {
+            "type": "number",
+            "format": "decimal"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "estimatedDelivery": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    }
+  }
+}
