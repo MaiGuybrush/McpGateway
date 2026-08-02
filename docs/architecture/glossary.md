@@ -3,13 +3,61 @@
 ## 核心概念
 
 ### **Tool Facade**
-一個獨立服務，作為 AI Agent 與企業內部 API 之間的適配層。它使用 MCP 協定對外暴露工具，負責：
+作為 AI Agent 與企業內部 API 之間的適配層。它使用 MCP 協定對外暴露工具，負責：
 - 語意封裝（將技術 API 轉為 LLM 友好的工具）
 - 欄位轉換與投影
 - 參數收斂（簡化複雜參數）
 - 認證管理
 
 **同義詞**：Tool Gateway, AI Tool Adapter, MCP Server
+
+> **【ADR-009 更新】不再是單一服務**。自 [ADR-009](adr/ADR-009-department-gateway-split.md) 起，
+> Tool Facade 為一組服務的統稱：**一個共用 `McpGateway.Core` package + N 個部門 Gateway 服務**。
+> 見下方「Core Package」與「部門 Gateway」詞條。
+
+---
+
+### **Core Package（`McpGateway.Core`）**
+所有部門 Gateway 共用的 NuGet package，承擔全部橫向關切：
+
+- MCP Host bootstrap（ASP.NET Core + Streamable HTTP）
+- 認證代理（JWT / API-KEY / NTLM + Token Cache）
+- Ocelot 具名 HttpClient
+- 啟動驗證（含部門前綴檢查）
+- 稽核日誌與 PII 遮蔽
+- 欄位投影 helper、可觀測性
+
+部門專案引用此 package 後，`Program.cs` 僅需 3 行。
+
+**維護者**：平台團隊（bus factor ≥ 2）
+**相關 ADR**：[ADR-009](adr/ADR-009-department-gateway-split.md) D2
+
+---
+
+### **部門 Gateway（Department Gateway）**
+單一部門的 MCP 服務，如 `McpGateway.Report`、`McpGateway.Spc`。
+
+- **內容**：僅該部門的 `ITool` 類別 + 3 行 `Program.cs` + `appsettings.json`
+- **部署**：獨立 container，獨立發版，故障互不影響
+- **對外路徑**：`mcp.corp.local/{dept}`（經 ingress 路徑分流）
+- **工具命名**：一律 `{dept}_{intent}[_v{major}]`，由 Core 啟動時強制驗證
+
+**相關 ADR**：[ADR-009](adr/ADR-009-department-gateway-split.md) D1/D4/D6、[ADR-004](adr/ADR-004-startup-validation.md) 檢查項 3
+
+---
+
+### **工具爆炸（Tool Explosion）**
+單一 MCP Server 掛載過多工具，導致 LLM 選錯工具、填錯參數，且工具描述吃掉大量 context token 的現象。
+
+| Tool 數量 | LLM 行為 |
+|-----------|----------|
+| 5–15 | 選擇準確、參數正確率高 |
+| 30+ | 開始選錯語意相鄰的工具 |
+| 50+ | context 被描述吃掉，準確率明顯下滑 |
+
+**解法**：依部門拆分 Gateway，agent 只連接所需部門端點（[ADR-009](adr/ADR-009-department-gateway-split.md) D1/D5）。
+
+**與語意封裝的區別**：語意封裝（ADR-003）讓「每一支工具」更好懂；部門拆分讓「agent 看到的工具集合」更小。兩者互補。
 
 ---
 
@@ -22,7 +70,7 @@
 - 動態工具註冊
 - 內建工具描述與參數驗證
 
-**相關 ADR**：[ADR-001](ADR-001-use-mcp-protocol.md)
+**相關 ADR**：[ADR-001](adr/ADR-001-use-mcp-protocol.md)
 
 ---
 
@@ -42,8 +90,12 @@ MCP 協定的一種傳輸方式，使用 HTTP 進行伺服器推播事件（Serv
 
 ** 關係 **：
 ```
-AI Agent → MCP → Tool Facade → HTTP → Ocelot Gateway → 下游服務
+AI Agent → MCP → Ingress → 部門 Gateway → HTTP → Ocelot Gateway → 下游服務
+             （路徑分流）    （McpGateway.{Dept}）
 ```
+
+⚠️ 【ADR-009】此鏈路較原設計多一跳（ingress）。延遲預算需重新驗證，
+見 [ADR-001](adr/ADR-001-use-mcp-protocol.md)「延遲預算需重驗」。
 
 ---
 
@@ -68,7 +120,7 @@ POST /api/orders/action
 // 參數：orderId (string, description: "訂單編號，格式如 SO-2026-000123")
 ```
 
-** 相關 ADR **：[ADR-003](ADR-003-config-driven-descriptions.md)
+** 相關 ADR **：[ADR-003](adr/ADR-003-config-driven-descriptions.md)
 
 ---
 
@@ -94,7 +146,7 @@ POST /api/orders/action
 - 與設定檔中的 descriptions 做差異比對
 - 參數無描述 → 根據 ADR-004 決定，可能是 Warning 或 Fail-fast
 
-**相關ADR**：[ADR-004](ADR-004-startup-validation.md)
+**相關ADR**：[ADR-004](adr/ADR-004-startup-validation.md)
 
 **風險**：JSON Schema flatten 在邊緣案例（oneOf, array of objects）可能產生歧義
 
@@ -135,7 +187,7 @@ public record DateRangeParams(
 
 **爭議**：路徑格式無標準，可能產生歧義。替代方案是 JSON Pointer（如 `/filter/dateRange/start`）。
 
-**相關 ADR**：[ADR-003](ADR-003-config-driven-descriptions.md), [ADR-004](ADR-004-startup-validation.md)
+**相關 ADR**：[ADR-003](adr/ADR-003-config-driven-descriptions.md), [ADR-004](adr/ADR-004-startup-validation.md)
 
 ---
 
@@ -175,7 +227,7 @@ JSON 資源的標準路徑表示法，用於識別內部欄位。
 - Azure Key Vault（如可用）
 - HashiCorp Vault（推薦長期）
 
-**相關 ADR**：[ADR-006](ADR-006-security-model.md)
+**相關 ADR**：[ADR-006](adr/ADR-006-security-model.md)
 
 ---
 
@@ -190,7 +242,7 @@ JSON 資源的標準路徑表示法，用於識別內部欄位。
 - Agent 不是人，沒有"角色"概念
 - 需要 ABAC（屬性基礎授權），而非傳統 RBAC
 
-**相關 ADR**：[ADR-006](ADR-006-security-model.md)
+**相關 ADR**：[ADR-006](adr/ADR-006-security-model.md)
 
 ---
 
@@ -208,7 +260,7 @@ JSON 資源的標準路徑表示法，用於識別內部欄位。
 禁止 IF agent.environment == "production" AND tool.is_experimental == true
 ```
 
-**相關 ADR**：[ADR-006](ADR-006-security-model.md)
+**相關 ADR**：[ADR-006](adr/ADR-006-security-model.md)
 
 ---
 
@@ -226,7 +278,7 @@ JSON 資源的標準路徑表示法，用於識別內部欄位。
 
 **重要性**：符合隱私法規（GDPR, 個資法），防止日誌洩漏敏感資訊
 
-**相關 ADR**：[ADR-006](ADR-006-security-model.md)
+**相關 ADR**：[ADR-006](adr/ADR-006-security-model.md)
 
 ---
 
@@ -245,7 +297,7 @@ JSON 資源的標準路徑表示法，用於識別內部欄位。
 - Duration
 - HTTP Status Code
 
-**相關 ADR**：[ADR-006](ADR-006-security-model.md)
+**相關 ADR**：[ADR-006](adr/ADR-006-security-model.md)
 
 ---
 
@@ -261,7 +313,7 @@ JSON 資源的標準路徑表示法，用於識別內部欄位。
 - MINOR：向後相容（新增可選參數）
 - PATCH：bug fix（不改介面）
 
-**相關 ADR**：[ADR-005](ADR-005-tool-versioning.md)
+**相關 ADR**：[ADR-005](adr/ADR-005-tool-versioning.md)
 
 ---
 
@@ -273,7 +325,7 @@ JSON 資源的標準路徑表示法，用於識別內部欄位。
 - 強制移除：6 個月後
 - 遷移文件：提供變更指南
 
-**相關 ADR**：[ADR-005](ADR-005-tool-versioning.md)
+**相關 ADR**：[ADR-005](adr/ADR-005-tool-versioning.md)
 
 ---
 
@@ -285,7 +337,7 @@ JSON 資源的標準路徑表示法，用於識別內部欄位。
 
 **格式**：YAML 或數據庫
 
-**相關 ADR**：[ADR-005](ADR-005-tool-versioning.md)
+**相關 ADR**：[ADR-005](adr/ADR-005-tool-versioning.md)
 
 ---
 
@@ -327,15 +379,19 @@ JSON 資源的標準路徑表示法，用於識別內部欄位。
 ## 相關文件
 
 ### **High Priority ADRs**
-- [ADR-001: MCP 協定選擇](ADR-001-use-mcp-protocol.md)
-- [ADR-002: .NET SDK 語言選擇](ADR-002-dotnet-mcp-sdk-choice.md) ⚠️ 技能棧風險
-- [ADR-003: 設定檔驅動描述](ADR-003-config-driven-descriptions.md) ⚠️ 雙重維護風險
-- [ADR-004: 啟動驗證機制](ADR-004-startup-validation.md)
-- [ADR-005: 版本控制策略](ADR-005-tool-versioning.md)
-- [ADR-006: 安全模型](ADR-006-security-model.md) ⚠️ 單一故障點風險
+- [ADR-001: MCP 協定選擇](adr/ADR-001-use-mcp-protocol.md) ✅ 已批准（PoC 完成）
+- [ADR-002: .NET SDK 語言選擇](adr/ADR-002-dotnet-mcp-sdk-choice.md) ✅ 技能棧風險已解除
+- [ADR-003: 參數描述策略](adr/ADR-003-config-driven-descriptions.md) ✅ 選項 B（程式碼內聯）
+- [ADR-004: 啟動驗證機制](adr/ADR-004-startup-validation.md) ✅ 含部門前綴檢查
+- [ADR-005: 版本控制策略](adr/ADR-005-tool-versioning.md) ✅ 選項 B（Tool 層級版本號）
+- [ADR-006: 安全模型](adr/ADR-006-security-model.md) ⚠️ 已批准，需 delta 確認（ADR-009）
+- [ADR-009: 部門別 Gateway 拆分](adr/ADR-009-department-gateway-split.md) ⏳ 已提議，待批准
+
+> ADR-007（測試策略）、ADR-008（快取策略）已預留編號但尚未撰寫。
 
 ### **Design Docs**
-- `docs/tool-facade-design-doc.md` - 原始設計文件
+- `docs/tool-facade-design-doc.md` - 原始設計文件 ⚠️ 4.1 架構圖與第 6 節部署架構仍為單體形態，待更新
+- `docs/specs/` - 實作規格文件
 
 ### **Skills Referenced**
 - `skill://grill-with-docs` - grilling 技能

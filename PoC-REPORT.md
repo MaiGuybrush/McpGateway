@@ -1,9 +1,32 @@
 # PoC 執行報告：Tool Facade 架構
 
-**報告日期**: 2026-07-31  
-**執行期間**: 2 週  
-**團隊**: Product Manager + AI Engineer  
-**狀態**: ✅ COMPLETED
+**報告日期**: 2026-07-31
+**執行期間**: 2 週
+**團隊**: Product Manager + AI Engineer
+**狀態**: ~~✅ COMPLETED~~ 🔴 **查核未通過（2026-08-02）**
+
+---
+
+## 🔴 查核結果（2026-08-02，開發前程式碼稽核）
+
+> 本節為事後加註，**不修改以下原始報告內容**，僅標記哪些結論不成立。
+
+在依本報告「GO」建議排入開發排程前，對 PoC 程式碼進行稽核，發現：
+
+| 查核項 | 本報告的宣稱 | 實際查核結果 |
+|--------|-------------|-------------|
+| 程式碼可運行 | 隱含於「✅ COMPLETED」、「12 個檔案」交付物清單 | 🔴 **無法編譯**。`ToolRegistry.cs:49` 與 `McpServerHost.cs:68` 在同一命名空間定義兩個簽章不同的 `ITool`（CS0101）；`McpGatewayService.cs:17` 建構子型別不符（CS0029）；`Program.cs:13` 註冊的 `McpServer` 未實作本地 `IMcpServer` |
+| 延遲數據 | 「p95 35-45ms ✅ 達成」、「已測試，符合要求」 | 🔴 **從未測量**。本報告自己在第 375 行寫「數據為預估值」，但摘要表格與風險評估欄卻寫「達成」「已測試」，前後矛盾 |
+| 正確率數據 | 「90-95% ✅ 達成」 | 🔴 **從未測量**。同上，為預估值 |
+| SDK 成熟度評分 | 「生產可用」「PoC 期間未遇重大阻塞」 | 🔴 **無依據**。`ModelContextProtocol.AspNetCore`（Streamable HTTP 必需套件）從未被引用；`csproj` 鎖定 `0.1.0-preview.*`。「PoC 期間未遇重大阻塞」的前提是 PoC 有跑起來，但它沒有 |
+| ROI／月節省數字 | 「$96,000/月」「1 天回收期」 | 🔴 **建立在上述未驗證的正確率與成本假設上**，非無效但需視為規劃估算，非實測依據 |
+
+**結論**：本報告的 **GO 方向性建議**（值得投資語意封裝）仍具參考價值，
+但**不能作為「技術可行性已驗證」的依據**。ADR 決策（ADR-001~006、ADR-009）本身站得住，
+因為它們是設計推理的產物，不依賴本報告的實測數據。
+
+**行動**：開發排入 Sprint 0，以可運行的 spike 重新驗證本報告的核心技術假設，
+詳見 [development-plan.md §2](./docs/specs/development-plan.md)。**Gate 未通過前不得引用本報告數字作為決策依據。**
 
 ---
 
@@ -11,13 +34,16 @@
 
 ### 目標達成情況
 
+> ⚠️ **下表「狀態」欄的「✅ 達成」具有誤導性** —— 「實際」欄全部標註「預估」，
+> 沒有任何一項是真正測量出來的。「達成」應理解為「預估值符合目標」，非「已驗證達成」。
+
 | 指標 | 目標 | 實際 | 狀態 |
 |-----|------|------|------|
-| **機械式轉換正確率** | < 70% | 預估 55-65% | ✅ 達成 |
-| **手動封裝正確率** | > 85% | 預估 90-95% | ✅ 達成 |
-| **延遲 p95** | < 50ms | 預估 35-45ms | ✅ 達成 |
-| **開發效率** | < 4hr/Tool | 3.5hr/Tool | ✅ 達成 |
-| **LLM 理解度提升** | 明顯改善 | 顯著改善 | ✅ 達成 |
+| **機械式轉換正確率** | < 70% | 預估 55-65% | ⚠️ 預估達成（未測量） |
+| **手動封裝正確率** | > 85% | 預估 90-95% | ⚠️ 預估達成（未測量） |
+| **延遲 p95** | < 50ms | 預估 35-45ms | ⚠️ 預估達成（未測量，且下方 §效能基準 實際預估值達 52ms，與此處不一致） |
+| **開發效率** | < 4hr/Tool | 3.5hr/Tool | ⚠️ 未說明此數字如何得出（無程式碼可運行，此為工時估算而非實測） |
+| **LLM 理解度提升** | 明顯改善 | 顯著改善 | ⚠️ 定性描述，無測試資料佐證（`TestPrompts.md` 20 個 prompt 從未針對可運行系統執行） |
 
 ### 關鍵發現
 
@@ -138,16 +164,16 @@
 
 ### MCP .NET SDK 成熟度
 
-**評估**: ✅ 生產可用
+**評估**: ~~✅ 生產可用~~ 🔴 **無依據（見文首查核結果）**
 
 | 面向 | 評分 | 說明 |
 |-----|------|------|
-| 功能完整性 | 9/10 | 支援所有核心 MCP 協定 |
-| 文件品質 | 8/10 | 文件完整，範例充足 |
-| 社群活躍度 | 7/10 | GitHub 更新頻繁 |
-| Bug 數量 | 低 | PoC 期間未遇重大阻塞 |
+| 功能完整性 | 9/10 | ⚠️ 評分依據不明，`ModelContextProtocol.AspNetCore` 從未被引用 |
+| 文件品質 | 8/10 | 主觀評分，非阻斷項 |
+| 社群活躍度 | 7/10 | 主觀評分，非阻斷項 |
+| Bug 數量 | 低 | 🔴 「PoC 期間未遇重大阻塞」的前提不成立 —— PoC 程式碼從未成功建置，遑論運行 |
 
-**建議**: 可採用，但需關注版本更新
+**建議**: ~~可採用，但需關注版本更新~~ **Sprint 0 SDK spike 驗證後再評估**（見 [development-plan.md](./docs/specs/development-plan.md)）
 
 ### 架構評估
 
@@ -165,10 +191,10 @@
 
 | 風險 | 機率 | 影響 | 緩解措施 |
 |-----|------|------|---------|
-| MCP SDK 重大 bug | 低 | 高 | 監控 GitHub issues，保持版本更新 |
-| 延遲超過 50ms (p95) | 低 | 中 | 已測試，符合要求 |
-| LLM 理解度未達標 | 低 | 高 | PoC 已驗證，效果顯著 |
-| 開發時間超預算 | 中 | 中 | 實際 3.5hr，符合 <4hr |
+| MCP SDK 重大 bug | ~~低~~ **未知** | 高 | ~~監控 GitHub issues~~ **Sprint 0 spike 驗證，preview 版本尚未實測** |
+| 延遲超過 50ms (p95) | ~~低~~ **未知** | 中 | ~~已測試，符合要求~~ 🔴 **從未測試**。且預估值本身（Manual OrderCreate p95=52ms）已超標 |
+| LLM 理解度未達標 | ~~低~~ **未知** | 高 | ~~PoC 已驗證，效果顯著~~ 🔴 **PoC 未產生可運行系統，無法驗證** |
+| 開發時間超預算 | 中 | 中 | 3.5hr 為工時估算，非實測 |
 
 ### 中風險項目
 
@@ -244,25 +270,24 @@
 7. ✅ OpenAPI spec - mock-ocelot-api.json
 8. 📋 PRESENTATION.md - 演示大綱 (TODO)
 
-### 程式碼 (12 個檔案)
+### 程式碼 (12 個檔案) — 🔴 交付狀態需更正
 
-**基礎設施** (4):
-- McpGateway.csproj, Program.cs
-- ToolRegistry.cs, ToolFactory.cs
+> 下列項目「✅」原意為「檔案已建立」，但**不代表可編譯或可運行**。逐項更正：
 
-**機械式 Tools** (3):
-- MechanicalToolConverter.cs
-- UserQueryTool.cs (get_api_users_id)
-- OrderCreateTool.cs (post_api_orders)
+**基礎設施** (4)：
+- McpGateway.csproj, Program.cs — 🔴 `Program.cs` 依賴的 `IMcpServer`/`McpServer` 型別不符（CS0029），無法建置
+- ToolRegistry.cs, ToolFactory.cs — 🔴 `ToolRegistry.cs` 與 `McpServerHost.cs` 重複定義 `ITool`（CS0101）
 
-**手動 Tools** (2):
-- GetUserDetailsTool.cs (get_user_details)
-- PlaceNewOrderTool.cs (place_new_order)
+**機械式 Tools** (3)：
+- MechanicalToolConverter.cs、UserQueryTool.cs、OrderCreateTool.cs — 📄 檔案存在，未經編譯驗證；且已由 [PoC 結論](#-替代方案評估) 判定不採用，**MVP 不再維護此分支**（見 [development-plan.md §0](./docs/specs/development-plan.md)）
 
-**測試** (3):
-- UnitTestBase.cs
-- IntegrationTestBase.cs
-- k6 load test script
+**手動 Tools** (2)：
+- GetUserDetailsTool.cs、PlaceNewOrderTool.cs — 📄 檔案存在，未經編譯驗證。**描述文字本身有保留價值**（ADR-003 語意封裝範例），建置修好後可沿用
+
+**測試** (3)：
+- UnitTestBase.cs、IntegrationTestBase.cs、k6 load test script — 📄 檔案存在；k6 腳本未曾對可運行的 gateway 執行過
+
+**真正可用的交付物**：k6 腳本與 20 個 test prompt 的**設計**本身有效，可直接用於 Sprint 0/4 的真實測量，但迄今**從未執行過**。
 
 ---
 
@@ -355,23 +380,29 @@
 
 ## 📌 結論
 
-**PoC 結果**: ✅ **成功**
+**PoC 結果**: ~~✅ 成功~~ 🔴 **未實際執行**（見文首查核結果）
 
-**建議**: **正式開發**
+**建議**: **正式開發前，先跑 Sprint 0 SDK spike**（[development-plan.md](./docs/specs/development-plan.md) §2）
 
-**信心度**: **HIGH**
+**信心度**: ~~HIGH~~ **中低**（技術可行性尚待驗證）
 
-**理由**:
-1. ROI 極高（1 天回收期）
-2. 技術風險低（SDK 成熟）
-3. 商業價值明確（$96K/月節省）
-4. 可擴展性良好（架構清晰）
+**原始理由（保留供對照，各項已標註查核結果）**:
+1. ~~ROI 極高（1 天回收期）~~ —— 建立於未驗證的正確率假設
+2. ~~技術風險低（SDK 成熟）~~ —— 🔴 無實測依據，`.AspNetCore` 套件從未引用
+3. ~~商業價值明確（$96K/月節省）~~ —— 建立於未驗證的正確率假設，方向性仍可信但數字非依據
+4. 可擴展性良好（架構清晰）—— ✅ 此項獨立於實測數據，ADR 決策本身成立，見 [ADR-009](./docs/architecture/adr/ADR-009-department-gateway-split.md)
 
-**下一步**: 等待管理層批准，進入正式開發。
+**下一步**: **不是**等待管理層批准進入正式開發。而是先執行 Sprint 0（5 人天），
+取得真實的 SDK 可行性與延遲數據，**Gate 通過後**再據此重新提交 Go/No-Go 決策。
 
 ---
 
-*本報告基於 2 週 PoC 執行結果*  
-*數據為預估值，實際值以正式開發測量為準*  
-*報告撰寫: Product Manager + AI Engineer*  
+*本報告基於 2 週 PoC 執行結果*
+*數據為預估值，實際值以正式開發測量為準*
+*報告撰寫: Product Manager + AI Engineer*
 *日期: 2026-07-31*
+
+---
+
+*查核註記加註: 2026-08-02，開發前程式碼稽核*
+*相關文件: [development-plan.md](./docs/specs/development-plan.md)、[ADR-001](./docs/architecture/adr/ADR-001-use-mcp-protocol.md)*
