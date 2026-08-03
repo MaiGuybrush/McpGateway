@@ -25,12 +25,14 @@ public class GatewayHealthChecks : IHealthCheck
         HealthCheckContext context, 
         CancellationToken cancellationToken = default)
     {
-        // TODO: Implement health checks
+        _logger.LogDebug("Health check executed");
+        
+        // For minimal version, always return healthy
+        // TODO: Implement actual health checks in future sprints
         // - Downstream service connectivity
         // - Authentication service availability
         // - Tool registry integrity
-
-        _logger.LogDebug("Health check executed");
+        
         return Task.FromResult(HealthCheckResult.Healthy("Gateway is healthy"));
     }
 }

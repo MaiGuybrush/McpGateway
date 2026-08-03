@@ -19,5 +19,8 @@
       <Visible>false</Visible>
     </None>
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\McpGateway.Core\McpGateway.Core.csproj" />
+  </ItemGroup>
 
 </Project>

@@ -1,8 +1,8 @@
 using McpGateway.Core.Hosting;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.Services.AddMcpGateway();               // auth + audit + transport + validation
+builder.Services.AddMcpGateway();
 
 var app = builder.Build();
-app.MapMcp("/report");
-await app.RunMcpGatewayAsync();                 // startup validation + run
+app.MapMcpGateway();
+await app.RunMcpGatewayAsync();
