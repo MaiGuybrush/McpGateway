@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\McpGateway\McpGateway.csproj" />
+    <ProjectReference Include="..\..\src\McpGateway.Core\McpGateway.Core.csproj" />
   </ItemGroup>
 
 </Project>

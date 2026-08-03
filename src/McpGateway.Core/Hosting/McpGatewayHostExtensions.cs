@@ -8,6 +8,7 @@ using Microsoft.Extensions.Options;
 using ModelContextProtocol;
 using McpGateway.Core.Configuration;
 using McpGateway.Core.Observability;
+using System;
 
 namespace McpGateway.Core.Hosting;
 
@@ -23,11 +24,17 @@ public static class McpGatewayHostExtensions
     /// <returns>The service collection for chaining.</returns>
     public static IServiceCollection AddMcpGateway(this IServiceCollection services)
     {
+        // Add required services
+        services.AddLogging();
+        
         // Register configuration
-        services.AddOptions<McpGatewayConfig>()
+        services.AddOptions<McpGatewayOptions>()
             .BindConfiguration("McpGateway")
             .ValidateDataAnnotations()
             .ValidateOnStart();
+
+        // Validate required fields
+        services.AddSingleton<IValidateOptions<McpGatewayOptions>, McpGatewayOptionsValidator>();
 
         // Register health checks
         services.AddHealthChecks()
@@ -53,13 +60,13 @@ public static class McpGatewayHostExtensions
         var logger = app.Services.GetRequiredService<ILogger<WebApplication>>();
         
         // Get configuration
-        var config = app.Services.GetRequiredService<IOptions<McpGatewayConfig>>().Value;
+        var options = app.Services.GetRequiredService<IOptions<McpGatewayOptions>>().Value;
         
         logger.LogInformation("Mapping MCP Gateway endpoints: RoutePrefix={RoutePrefix}, EnableHealthChecks={EnableHealthChecks}", 
-            config.RoutePrefix, config.EnableHealthChecks);
+            options.RoutePrefix, options.EnableHealthChecks);
 
         // Map health check endpoints
-        if (config.EnableHealthChecks)
+        if (options.EnableHealthChecks)
         {
             logger.LogInformation("Mapping health check endpoints");
             app.MapHealthChecks("/health/live", new HealthCheckOptions
@@ -74,8 +81,8 @@ public static class McpGatewayHostExtensions
         }
 
         // Map MCP endpoint
-        logger.LogInformation("Mapping MCP endpoint at {RoutePrefix}", config.RoutePrefix);
-        app.MapMcp(config.RoutePrefix);
+        logger.LogInformation("Mapping MCP endpoint at {RoutePrefix}", options.RoutePrefix);
+        app.MapMcp(options.RoutePrefix);
 
         return app;
     }
@@ -90,10 +97,10 @@ public static class McpGatewayHostExtensions
         var logger = app.Services.GetRequiredService<ILogger<WebApplication>>();
         
         // Get configuration
-        var config = app.Services.GetRequiredService<IOptions<McpGatewayConfig>>().Value;
+        var options = app.Services.GetRequiredService<IOptions<McpGatewayOptions>>().Value;
         
-        logger.LogInformation("MCP Gateway configuration: RoutePrefix={RoutePrefix}, EnableHealthChecks={EnableHealthChecks}", 
-            config.RoutePrefix, config.EnableHealthChecks);
+        logger.LogInformation("MCP Gateway configuration: Department={Department}, RoutePrefix={RoutePrefix}, EnableHealthChecks={EnableHealthChecks}", 
+            options.Department, options.RoutePrefix, options.EnableHealthChecks);
 
         // Run the application
         logger.LogInformation("Starting MCP Gateway...");
