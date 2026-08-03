@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+
+    <PackageId>McpGateway.Core</PackageId>
+    <Version>0.1.0-preview</Version>
+    <Authors>Platform Team</Authors>
+    <Company>Internal</Company>
+    <Description>MCP Gateway shared library providing authentication, audit, validation, and transport functionality for department gateways (McpGateway.Report, McpGateway.Spc, McpGateway.Qc)</Description>
+    <PackageTags>MCP;ModelContextProtocol;Gateway;AI;Tools</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <PackageOutputPath>../../artifacts/packages</PackageOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol" Version="1.4.1" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="1.4.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\"/>
+  </ItemGroup>
+
+</Project>
