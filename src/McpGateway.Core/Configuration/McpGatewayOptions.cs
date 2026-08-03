@@ -93,9 +93,19 @@ public class TokenCacheOptions
     public string? Type { get; set; }
     
     /// <summary>
-    /// Gets or sets the cache expiration in minutes.
+    /// Gets or sets the Redis connection string.
     /// </summary>
-    public int ExpirationMinutes { get; set; } = 60;
+    public string? ConnectionString { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the JWT expiry skew in minutes (default: 1).
+    /// </summary>
+    public int JwtExpirySkewMinutes { get; set; } = 1;
+    
+    /// <summary>
+    /// Gets or sets the API key TTL in minutes (default: 5).
+    /// </summary>
+    public int ApiKeyTtlMinutes { get; set; } = 5;
 }
 
 /// <summary>

@@ -6,8 +6,11 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol;
+using McpGateway.Core.Cache;
 using McpGateway.Core.Configuration;
 using McpGateway.Core.Observability;
+using McpGateway.Core.Tools;
+using StackExchange.Redis;
 using System;
 
 namespace McpGateway.Core.Hosting;
@@ -39,6 +42,33 @@ public static class McpGatewayHostExtensions
         // Register health checks
         services.AddHealthChecks()
             .AddCheck<GatewayHealthChecks>("gateway", tags: new[] { "live", "ready" });
+
+
+
+        // Register Redis for token cache
+        var tokenCache = services.BuildServiceProvider().GetRequiredService<IOptions<McpGatewayOptions>>().Value.TokenCache;
+        if (!string.IsNullOrEmpty(tokenCache?.ConnectionString))
+        {
+            services.AddSingleton<IConnectionMultiplexer>(sp =>
+            {
+                var logger = sp.GetRequiredService<ILogger<McpGatewayHostExtensions>>();
+                try
+                {
+                    return ConnectionMultiplexer.Connect(tokenCache.ConnectionString);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Failed to connect to Redis. Token caching will be disabled.");
+                    return null!;
+                }
+            });
+            services.AddSingleton<ITokenCacheService, RedisTokenCacheService>();
+        }
+        else
+        {
+            services.AddSingleton<ITokenCacheService>(sp => new NullTokenCacheService(
+                sp.GetRequiredService<ILogger<NullTokenCacheService>>()));
+        }
 
         // Register MCP services
         services.AddMcpServer(options =>
