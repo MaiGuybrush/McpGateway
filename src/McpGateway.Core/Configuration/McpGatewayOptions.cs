@@ -70,6 +70,16 @@ public class AuthOptions
     /// Gets or sets whether authentication is enabled.
     /// </summary>
     public bool Enabled { get; set; } = true;
+    
+    /// <summary>
+    /// Gets or sets the JWKS endpoint URL.
+    /// </summary>
+    public string? JwksEndpoint { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the JWKS cache TTL in hours (default: 24).
+    /// </summary>
+    public int JwksCacheHours { get; set; } = 24;
 }
 
 /// <summary>
