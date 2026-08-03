@@ -66,8 +66,9 @@ tests/
   McpGateway.Core.IntegrationTests/   ← WireMock 模擬 Ocelot
 ```
 
-**目標框架**：`net8.0`
-⚠️ 本機目前僅安裝 .NET SDK 3.1.402，**開發環境需先安裝 .NET 8 SDK**。
+**目標框架**：`net9.0`（.NET 9 LTS）
+⚠️ 本機目前僅安裝 .NET SDK 3.1.402，**開發環境需先安裝 .NET 9 SDK**。
+見 [ADR-002](../architecture/adr/ADR-002-dotnet-mcp-sdk-choice.md) 版本選擇理由。
 
 ---
 

@@ -17,7 +17,7 @@
 | 效能數據 | p95 42–52ms | 🔴 **預估值**，`PoC-REPORT.md:375` 自陳 |
 | 正確率數據 | 55–65% vs 90–95% | 🔴 **預估值**，非實測 |
 | SDK 驗證 | 「Streamable HTTP 支援完整（經 PoC 驗證）」 | 🔴 **無依據**，`ModelContextProtocol.AspNetCore` 未曾引用 |
-| 建置環境 | — | 🔴 本機僅 .NET SDK **3.1.402**，無法建置 `net8.0` |
+| 建置環境 | — | 🔴 本機僅 .NET SDK **3.1.402**，無法建置 `net9.0` |
 | ADR 決策 | 6 份 + ADR-009 | ✅ **有效**，此為真正的資產 |
 | 設計文件 | design-doc + glossary | ✅ **有效**（架構圖待更新為多部門） |
 
@@ -75,7 +75,7 @@ Sprint 5   第二個部門（驗證可複製性）  ← 觸發式，非排程
 
 | # | 任務 | 人天 | 相依 |
 |---|------|------|------|
-| 0.1 | 安裝 .NET 8 SDK，確認建置環境 | 0.5 | — |
+| 0.1 | 安裝 .NET 9 SDK，確認建置環境 | 0.5 | — |
 | 0.2 | **SDK spike**：以官方 `ModelContextProtocol` + `.AspNetCore` 寫一支最小可運行 MCP server | 2 | 0.1 |
 | 0.3 | 驗證 Attribute 標註 + 組件掃描的註冊路徑（design-doc 4.2.2 v1.1） | 含 0.2 | — |
 | 0.4 | 驗證 `MapMcp` 是否支援路徑前綴（ADR-009 D4 前提） | 含 0.2 | — |
@@ -222,7 +222,7 @@ Sprint 5   第二個部門（驗證可複製性）  ← 觸發式，非排程
 | # | 相依項 | 對象 | 阻斷 | 需求時點 |
 |---|--------|------|------|----------|
 | 1 | 內部 NuGet feed | DevOps | 🔴 Sprint 0.6 | **立即** |
-| 2 | .NET 8 SDK 開發環境 | 自行安裝 | 🔴 Sprint 0.1 | **立即** |
+| 2 | .NET 9 SDK 開發環境 | 自行安裝 | 🔴 Sprint 0.1 | **立即** |
 | 3 | Redis（Token Cache）+ `maxclients` 評估 | DevOps | 🔴 Sprint 1.6 | Sprint 1 前 |
 | 4 | JWKS 端點與 SLA | Auth 團隊 | 🔴 Sprint 1.5 | Sprint 1 前 |
 | 5 | API-KEY 驗證服務與 SLA | Auth 團隊 | 🔴 Sprint 2.1 | Sprint 2 前 |

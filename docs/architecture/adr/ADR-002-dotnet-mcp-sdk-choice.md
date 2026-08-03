@@ -15,7 +15,25 @@
 
 **✅ 確定採用 .NET MCP SDK + ASP.NET Core**
 
-### 理由（已確認）
+### 目標框架版本
+
+**決策**：`net9.0`（.NET 9 LTS）
+
+**理由**：
+- **.NET 9 為當前 LTS 版本**（2024-11-12 發布，支援至 2027-05）
+- **.NET 8 LTS 支援僅至 2026-11**（6 個月後進入 maintenance-only）
+- **專案尚在 Sprint 0**：PoC 程式碼無法編譯（見 ADR-001 查核），無遷移成本
+- **向前相容**：Core package 用 `net9.0` 發佈，部門專案可選擇 `net8.0` 或 `net9.0` target（TFM 向下相容）
+
+**待驗證**（Sprint 0.1）：
+- `ModelContextProtocol.AspNetCore` 套件是否支援 .NET 9
+- 若不支援 → fallback 至 `net8.0`，並在 ADR 補充技術限制說明
+
+**更新日期**：2026-08-03
+
+---
+
+### SDK 選擇理由（已確認）
 
 1. **團隊技能確認**
    - 團隊內有熟悉 C# 的專職人員
