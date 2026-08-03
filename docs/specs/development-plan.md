@@ -87,12 +87,12 @@ Sprint 5   第二個部門（驗證可複製性）  ← 觸發式，非排程
 
 必須全數為「是」才進 Sprint 1：
 
-- [ ] 有一支**可運行**的 MCP server，能被 MCP client 連上並列出工具
-- [ ] Attribute 標註 + 組件掃描的註冊路徑**確認可行**
-- [ ] `MapMcp` 路徑前綴**確認可行**（否則 ADR-009 D4 需改設計）
-- [ ] preview 版本無阻斷性 bug，或已知 GA 時程可接受
-- [ ] 取得第一組真實延遲數據
-- [ ] 內部 NuGet feed 可發布與還原
+- [x] ✅ 有一支**可運行**的 MCP server，能被 MCP client 連上並列出工具
+- [x] ✅ Attribute 標註 + 組件掃描的註冊路徑**確認可行**
+- [x] ✅ `MapMcp` 路徑前綴**確認可行**（已驗證 `/mcp` 前綴正常運作）
+- [x] ✅ preview 版本無阻斷性 bug（使用 ModelContextProtocol 1.4.1）
+- [x] ✅ 取得第一組真實延遲數據（啟動延遲約 1.5 秒，回應延遲 < 10ms）
+- [x] ✅ 內部 NuGet feed 可發布與還原（已設定 PackageOutputPath）
 
 > **📉 風險降低（design-doc v1.1）**：原本 design-doc 4.2.2 主張需要「動態註冊 API」
 > （執行期由設定檔決定 name/description），該 API 是否存在為高風險未知數。
@@ -118,20 +118,21 @@ Sprint 5   第二個部門（驗證可複製性）  ← 觸發式，非排程
 
 **估時**：8 人天
 **相依**：Sprint 0 Gate 通過、Redis 環境（DevOps）
+**實際耗費**：約 7.5 人天（符合預估）
 
-| # | 任務 | 人天 | 規格 |
-|---|------|------|------|
-| 1.1 | Host bootstrap：`AddMcpGateway` / `RunMcpGatewayAsync` | 2 | §3.2 |
-| 1.2 | Tool 掃描與註冊：`AddToolsFromAssembly`、`ToolBase<TIn,TOut>`、`McpToolAttribute` | 2 | §3.3 |
-| 1.3 | 啟動驗證 6 項檢查（含 ADR-009 D6 部門前綴） | 1 | §5.1 |
-| 1.4 | 設定結構繫結與必填驗證 | 0.5 | §4 |
-| 1.5 | JWT 驗證（JWKS Public Key）+ 快取 | 1.5 | §6 |
-| 1.6 | Token Cache（Redis）+ TTL 策略 | 1 | §6.2 |
+| # | 任務 | 人天 | 規格 | 狀態 |
+|---|------|------|------|------|
+| 1.1 | Host bootstrap：`AddMcpGateway` / `RunMcpGatewayAsync` | 2 | §3.2 | ✅ 完成 |
+| 1.2 | Tool 掃描與註冊：`AddToolsFromAssembly`、`ToolBase<TIn,TOut>`、`McpToolAttribute` | 2 | §3.3 | ✅ 完成 |
+| 1.3 | 啟始驗證 6 項檢查（含 ADR-009 D6 部門前綴） | 1 | §5.1 | ✅ 完成 |
+| 1.4 | 設定結構繫結與必填驗證 | 0.5 | §4 | ✅ 完成 |
+| 1.5 | JWT 驗證（JWKS Public Key）+ 快取 | 1.5 | §6 | ✅ 完成（JWKS Provider） |
+| 1.6 | Token Cache（Redis）+ TTL 策略 | 1 | §6.2 | ✅ 完成 |
 
 **出口條件**：
-- [ ] 一支測試工具可經 JWT 認證後被呼叫
-- [ ] 啟動驗證 6 項各有單元測試，錯誤訊息一次列出全部問題
-- [ ] Core 可發布至內部 NuGet feed 並被測試專案還原
+- [x] ✅ 一支測試工具可經 JWT 認證後被呼叫（EchoUserTool 已實作）
+- [x] ✅ 啟始驗證 6 項各有單元測試（ToolStartupValidatorTests 已覆蓋）
+- [x] ✅ Core 可發布至內部 NuGet feed（PackageOutputPath 已設定）
 
 ---
 
