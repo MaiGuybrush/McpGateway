@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using McpGateway.Core.Tools;
 using StackExchange.Redis;
 
 namespace McpGateway.Core.Cache;

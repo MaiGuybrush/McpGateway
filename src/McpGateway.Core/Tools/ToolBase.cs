@@ -31,9 +31,10 @@ public record ToolContext(
 public abstract class ToolBase<TInput, TOutput>
 {
     /// <summary>
-    /// Gets the HTTP client factory for making downstream API calls.
+    /// Gets the downstream client for making API calls with automatic header injection and retry logic.
     /// </summary>
-    protected internal readonly IHttpClientFactory HttpClientFactory;
+    // Phase 3: Uncomment when IDownstreamClient is implemented
+    // protected internal readonly IDownstreamClient Downstream;
 
     /// <summary>
     /// Gets the JSON serializer options.
@@ -43,10 +44,27 @@ public abstract class ToolBase<TInput, TOutput>
     /// <summary>
     /// Initializes a new instance of the tool.
     /// </summary>
+    /// <param name="downstreamClient">The downstream client for API calls.</param>
+    // Phase 3: Uncomment when IDownstreamClient is implemented
+    // protected ToolBase(IDownstreamClient downstreamClient)
+    protected ToolBase()
+    {
+        // Phase 3: Uncomment when IDownstreamClient is implemented
+        // Downstream = downstreamClient;
+        JsonSerializerOptions = new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        };
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the tool (legacy constructor for backward compatibility).
+    /// </summary>
     /// <param name="httpClientFactory">The HTTP client factory.</param>
+    [Obsolete("Use constructor accepting IDownstreamClient instead")]
     protected ToolBase(IHttpClientFactory httpClientFactory)
     {
-        HttpClientFactory = httpClientFactory;
+        // Temporary fallback for existing tools
         JsonSerializerOptions = new JsonSerializerOptions
         {
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase

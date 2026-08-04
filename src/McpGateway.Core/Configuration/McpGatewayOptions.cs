@@ -51,9 +51,35 @@ public class McpGatewayOptions
 public class OcelotOptions
 {
     /// <summary>
-    /// Gets or sets the configuration file path.
+    /// Gets or sets the base URL for Ocelot gateway.
     /// </summary>
-    public string? ConfigFile { get; set; }
+    public string? BaseUrl { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the timeout in seconds for downstream calls (default: 10).
+    /// </summary>
+    public int TimeoutSeconds { get; set; } = 10;
+    
+    /// <summary>
+    /// Gets or sets the retry configuration.
+    /// </summary>
+    public RetryOptions? Retry { get; set; }
+}
+
+/// <summary>
+/// Retry configuration options for downstream calls.
+/// </summary>
+public class RetryOptions
+{
+    /// <summary>
+    /// Gets or sets the number of retry attempts (default: 2).
+    /// </summary>
+    public int Count { get; set; } = 2;
+    
+    /// <summary>
+    /// Gets or sets the backoff delay in milliseconds between retries (default: 200).
+    /// </summary>
+    public int BackoffMs { get; set; } = 200;
 }
 
 /// <summary>
@@ -80,6 +106,16 @@ public class AuthOptions
     /// Gets or sets the JWKS cache TTL in hours (default: 24).
     /// </summary>
     public int JwksCacheHours { get; set; } = 24;
+    
+    /// <summary>
+    /// Gets or sets the API-KEY validation service URL.
+    /// </summary>
+    public string? ApiKeyServiceUrl { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the API-KEY validation timeout in seconds (default: 3).
+    /// </summary>
+    public int ApiKeyTimeoutSeconds { get; set; } = 3;
 }
 
 /// <summary>

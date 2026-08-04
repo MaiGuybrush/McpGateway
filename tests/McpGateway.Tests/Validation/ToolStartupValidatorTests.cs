@@ -69,10 +69,9 @@ public class ToolStartupValidatorTests
     }
 
     // 工具用於測試 SemVer 格式
-    [McpTool("report_invalid_version")]
+    [McpTool("report_invalid_version", Version = "not-semver")]
     private class InvalidVersionTool : ToolBase<ValidInput, ValidOutput>
     {
-        [McpTool("report_invalid_version", Version = "not-semver")]
         public InvalidVersionTool(IHttpClientFactory httpClientFactory) : base(httpClientFactory) { }
         public override Task<ValidOutput> ExecuteAsync(ValidInput input, ToolContext context, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public override string Name => "report_invalid_version";

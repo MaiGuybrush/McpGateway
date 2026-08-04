@@ -1,17 +1,25 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.AspNetCore.Http;
 using ModelContextProtocol;
 using McpGateway.Core.Cache;
 using McpGateway.Core.Configuration;
+using McpGateway.Core.Downstream;
+using McpGateway.Core.Auth;
 using McpGateway.Core.Observability;
 using McpGateway.Core.Tools;
+using McpGateway.Core.Validation;
 using StackExchange.Redis;
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace McpGateway.Core.Hosting;
 
@@ -45,30 +53,86 @@ public static class McpGatewayHostExtensions
 
 
 
-        // Register Redis for token cache
+        // Register Redis for token cache with circuit breaker and degradation
         var tokenCache = services.BuildServiceProvider().GetRequiredService<IOptions<McpGatewayOptions>>().Value.TokenCache;
         if (!string.IsNullOrEmpty(tokenCache?.ConnectionString))
         {
             services.AddSingleton<IConnectionMultiplexer>(sp =>
             {
-                var logger = sp.GetRequiredService<ILogger<McpGatewayHostExtensions>>();
+                var logger = sp.GetRequiredService<ILogger<RedisTokenCacheService>>();
                 try
                 {
                     return ConnectionMultiplexer.Connect(tokenCache.ConnectionString);
                 }
                 catch (Exception ex)
                 {
-                    logger.LogWarning(ex, "Failed to connect to Redis. Token caching will be disabled.");
+                    logger.LogWarning(ex, "Failed to connect to Redis. Token caching will use in-memory fallback.");
                     return null!;
                 }
             });
-            services.AddSingleton<ITokenCacheService, RedisTokenCacheService>();
+            
+            services.AddSingleton<ITokenCacheService>(sp =>
+            {
+                try
+                {
+                    var redis = sp.GetService<IConnectionMultiplexer>();
+                    if (redis != null && redis.IsConnected)
+                    {
+                        var logger = sp.GetRequiredService<ILogger<RedisTokenCacheService>>();
+                        return new RedisTokenCacheService(redis, logger);
+                    }
+                    
+                    // Redis not connected, use degraded mode
+                    var nullLogger = sp.GetRequiredService<ILogger<NullTokenCacheService>>();
+                    var memoryCache = sp.GetService<IMemoryCache>();
+                    return new NullTokenCacheService(nullLogger, memoryCache);
+                }
+                catch (Exception ex)
+                {
+                    var logger = sp.GetRequiredService<ILogger<NullTokenCacheService>>();
+                    logger.LogWarning(ex, "Redis service check failed, using degraded token cache");
+                    
+                    var nullLogger = sp.GetRequiredService<ILogger<NullTokenCacheService>>();
+                    var memoryCache = sp.GetService<IMemoryCache>();
+                    return new NullTokenCacheService(nullLogger, memoryCache);
+                }
+            });
         }
         else
         {
-            services.AddSingleton<ITokenCacheService>(sp => new NullTokenCacheService(
-                sp.GetRequiredService<ILogger<NullTokenCacheService>>()));
+            // No Redis configured, use in-memory cache
+            services.AddSingleton<ITokenCacheService>(sp => 
+            {
+                var logger = sp.GetRequiredService<ILogger<NullTokenCacheService>>();
+                var memoryCache = sp.GetRequiredService<IMemoryCache>();
+                return new NullTokenCacheService(logger, memoryCache);
+            });
         }
+
+        // Register authentication services
+        services.AddHttpClient<IApiKeyValidator, ApiKeyValidator>((sp, client) =>
+        {
+            var options = sp.GetRequiredService<IOptions<McpGatewayOptions>>().Value;
+            var authOptions = options.Auth ?? new AuthOptions();
+            
+            if (!string.IsNullOrEmpty(authOptions.ApiKeyServiceUrl))
+            {
+                client.BaseAddress = new Uri(authOptions.ApiKeyServiceUrl);
+            }
+        });
+        services.AddSingleton<AuthenticationProxy>();
+
+        // Register downstream client
+        services.AddHttpClient<IDownstreamClient, McpGateway.Core.Downstream.DownstreamClient>((sp, client) =>
+        {
+            var options = sp.GetRequiredService<IOptions<McpGatewayOptions>>().Value;
+            var ocelotOptions = options.Ocelot ?? new OcelotOptions();
+            
+            if (!string.IsNullOrEmpty(ocelotOptions.BaseUrl))
+            {
+                client.BaseAddress = new Uri(ocelotOptions.BaseUrl);
+            }
+        });
 
         // Register MCP services
         services.AddMcpServer(options =>
@@ -110,6 +174,9 @@ public static class McpGatewayHostExtensions
             });
         }
 
+        // Add API-KEY authentication middleware to MCP endpoints
+        app.UseMiddleware<ApiKeyAuthenticationMiddleware>();
+        
         // Map MCP endpoint
         logger.LogInformation("Mapping MCP endpoint at {RoutePrefix}", options.RoutePrefix);
         app.MapMcp(options.RoutePrefix);

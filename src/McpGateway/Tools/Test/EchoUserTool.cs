@@ -1,6 +1,6 @@
 using System.ComponentModel;
 using System.Text.Json.Serialization;
-using McpGateway.Core.Hosting;
+using McpGateway.Core.Downstream;
 using McpGateway.Core.Tools;
 
 namespace McpGateway.Tools.Test;
@@ -18,7 +18,7 @@ public class EchoUserTool : ToolBase<EchoUserInput, EchoUserOutput>
         Returns the input message along with context information.
         """;
 
-    public EchoUserTool(IHttpClientFactory httpClientFactory) : base(httpClientFactory)
+    public EchoUserTool() : base((IHttpClientFactory)null!)
     {
     }
 

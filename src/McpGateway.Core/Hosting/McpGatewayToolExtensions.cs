@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
+using McpGateway.Core.Tools;
 using System;
 using System.Collections.Generic;
 using System.Linq;

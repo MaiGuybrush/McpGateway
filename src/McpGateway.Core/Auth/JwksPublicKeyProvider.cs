@@ -3,6 +3,8 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Security.Cryptography;
 using System.Threading.Tasks;
@@ -33,7 +35,7 @@ public class Jwks
 }
 
 /// <summary>
-/// Provides public keys from a JWKS endpoint for JWT signature validation.
+/// Provides public keys from a JWKS endpoint for JWT signature validation with graceful degradation.
 /// </summary>
 public class JwksPublicKeyProvider
 {
@@ -41,6 +43,7 @@ public class JwksPublicKeyProvider
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<JwksPublicKeyProvider> _logger;
     private readonly AuthOptions _authOptions;
+    private bool _jwksFetchFailedLogged = false;
 
     /// <summary>
     /// Initializes a new instance of the JwksPublicKeyProvider.
@@ -62,35 +65,39 @@ public class JwksPublicKeyProvider
     }
 
     /// <summary>
-    /// Gets the public key for the specified key ID (kid).
+    /// Gets the public key for the specified key ID (kid) with graceful degradation.
     /// </summary>
     /// <param name="kid">The key ID.</param>
+    /// <param name="correlationId">The correlation ID for logging.</param>
     /// <returns>The RSA public key.</returns>
-    public async Task<RSA?> GetPublicKeyAsync(string kid)
+    /// <exception cref="HttpRequestException">Thrown when JWKS service is unavailable and no cached keys exist.</exception>
+    public async Task<RSA?> GetPublicKeyAsync(string kid, string correlationId)
     {
         if (string.IsNullOrEmpty(_authOptions.JwksEndpoint))
         {
-            _logger.LogWarning("JWKS endpoint is not configured");
+            _logger.LogWarning("CorrelationId: {CorrelationId} - JWKS endpoint is not configured", correlationId);
             return null;
         }
 
         var cacheKey = $"jwks_{_authOptions.JwksEndpoint}_{kid}";
+        var jwksCacheKey = $"jwks_cache_{_authOptions.JwksEndpoint}";
         
-        // Try to get from cache
+        // Try to get from cache first
         if (_cache.TryGetValue(cacheKey, out RSA? cachedKey))
         {
+            _logger.LogDebug("CorrelationId: {CorrelationId} - JWKS cache hit for kid: {Kid}", correlationId, kid);
             return cachedKey;
         }
 
         try
         {
             // Fetch JWKS from endpoint
-            var jwks = await FetchJwksAsync();
+            var jwks = await FetchJwksAsync(correlationId);
             var key = jwks.Keys.FirstOrDefault(k => k.Kid == kid);
 
             if (key == null)
             {
-                _logger.LogWarning("No key found with kid: {Kid}", kid);
+                _logger.LogWarning("CorrelationId: {CorrelationId} - No key found with kid: {Kid}", correlationId, kid);
                 return null;
             }
 
@@ -105,50 +112,138 @@ public class JwksPublicKeyProvider
                     .SetAbsoluteExpiration(TimeSpan.FromHours(cacheHours));
                 
                 _cache.Set(cacheKey, rsaKey, cacheOptions);
+                
+                // Reset failure flag on successful fetch
+                _jwksFetchFailedLogged = false;
             }
 
             return rsaKey;
         }
-        catch (Exception ex)
+        catch (RedisConnectionException redisEx)
         {
-            _logger.LogError(ex, "Failed to fetch or parse JWKS from {JwksEndpoint}", _authOptions.JwksEndpoint);
+            // Redis connection failure - use memory cache exclusively
+            _logger.LogWarning(redisEx, "CorrelationId: {CorrelationId} - Redis connection failed, using in-memory cache only", correlationId);
             
-            // Try to use cached data even if expired (degradation)
-            var cachedJwks = _cache.Get<Jwks?>("jwks_cache_" + _authOptions.JwksEndpoint);
+            // Try to use cached JWKS even if expired
+            var cachedJwks = _cache.Get<Jwks?>(jwksCacheKey);
             if (cachedJwks != null)
             {
-                _logger.LogWarning("Using expired JWKS cache due to fetch failure");
+                _logger.LogWarning("CorrelationId: {CorrelationId} - Using cached JWKS due to Redis failure", correlationId);
                 var key = cachedJwks.Keys.FirstOrDefault(k => k.Kid == kid);
                 if (key != null)
                 {
                     return ConvertJwkToRsa(key);
                 }
             }
-
-            return null;
-        }
-    }
-
-    private async Task<Jwks> FetchJwksAsync()
-    {
-        var client = _httpClientFactory.CreateClient();
-        var response = await client.GetStringAsync(_authOptions.JwksEndpoint);
-        
-        var jwks = JsonSerializer.Deserialize<Jwks>(response) ?? throw new InvalidOperationException("Failed to deserialize JWKS");
-        
-        // Cache the full JWKS response
-        if (!string.IsNullOrEmpty(_authOptions.JwksEndpoint))
-        {
-            var cacheHours = _authOptions.JwksCacheHours > 0 ? _authOptions.JwksCacheHours : 24;
-            var cacheOptions = new MemoryCacheEntryOptions()
-                .SetAbsoluteExpiration(TimeSpan.FromHours(cacheHours));
             
-            _cache.Set("jwks_cache_" + _authOptions.JwksEndpoint, jwks, cacheOptions);
+            _logger.LogError("CorrelationId: {CorrelationId} - No cached JWKS keys available during Redis outage", correlationId);
+            throw new HttpRequestException("Authentication service temporarily unavailable due to cache failure", redisEx, HttpStatusCode.ServiceUnavailable);
         }
-
-        return jwks;
+        catch (HttpRequestException httpEx) when (httpEx.StatusCode == HttpStatusCode.RequestTimeout)
+        {
+            // JWKS service timeout - try cache
+            _logger.LogWarning(httpEx, "CorrelationId: {CorrelationId} - JWKS service timeout, attempting cache fallback", correlationId);
+            
+            var cachedJwks = _cache.Get<Jwks?>(jwksCacheKey);
+            if (cachedJwks != null)
+            {
+                _logger.LogWarning("CorrelationId: {CorrelationId} - Using expired JWKS cache due to service timeout", correlationId);
+                var key = cachedJwks.Keys.FirstOrDefault(k => k.Kid == kid);
+                if (key != null)
+                {
+                    return ConvertJwkToRsa(key);
+                }
+            }
+            
+            _logger.LogError("CorrelationId: {CorrelationId} - JWKS service timeout and no cached keys available", correlationId);
+            throw new HttpRequestException("Authentication service timeout - cached keys unavailable", httpEx, HttpStatusCode.ServiceUnavailable);
+        }
+        catch (HttpRequestException httpEx)
+        {
+            // JWKS service failure - try cache
+            if (!_jwksFetchFailedLogged)
+            {
+                _logger.LogWarning(httpEx, "CorrelationId: {CorrelationId} - JWKS service failure, attempting cache fallback", correlationId);
+                _jwksFetchFailedLogged = true;
+            }
+            
+            var cachedJwks = _cache.Get<Jwks?>(jwksCacheKey);
+            if (cachedJwks != null)
+            {
+                _logger.LogWarning("CorrelationId: {CorrelationId} - Using cached JWKS due to service failure", correlationId);
+                var key = cachedJwks.Keys.FirstOrDefault(k => k.Kid == kid);
+                if (key != null)
+                {
+                    return ConvertJwkToRsa(key);
+                }
+            }
+            
+            _logger.LogError("CorrelationId: {CorrelationId} - JWKS service failure and no cached keys available", correlationId);
+            throw new HttpRequestException("Authentication service temporarily unavailable", httpEx, HttpStatusCode.ServiceUnavailable);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "CorrelationId: {CorrelationId} - Unexpected error fetching or parsing JWKS from {JwksEndpoint}", 
+                correlationId, _authOptions.JwksEndpoint);
+            
+            // Last resort - try any cached JWKS
+            var cachedJwks = _cache.Get<Jwks?>(jwksCacheKey);
+            if (cachedJwks != null)
+            {
+                _logger.LogWarning("CorrelationId: {CorrelationId} - Using cached JWKS due to unexpected error", correlationId);
+                var key = cachedJwks.Keys.FirstOrDefault(k => k.Kid == kid);
+                if (key != null)
+                {
+                    return ConvertJwkToRsa(key);
+                }
+            }
+            
+            throw new HttpRequestException("Authentication service error", ex, HttpStatusCode.ServiceUnavailable);
+        }
     }
 
+    /// <summary>
+    /// Fetches JWKS from the endpoint with timeout handling.
+    /// </summary>
+    private async Task<Jwks> FetchJwksAsync(string correlationId)
+    {
+        try
+        {
+            var client = _httpClientFactory.CreateClient();
+            client.Timeout = TimeSpan.FromSeconds(30); // Prevent indefinite hangs
+            
+            _logger.LogDebug("CorrelationId: {CorrelationId} - Fetching JWKS from {JwksEndpoint}", 
+                correlationId, _authOptions.JwksEndpoint);
+            
+            var response = await client.GetStringAsync(_authOptions.JwksEndpoint);
+            
+            var jwks = JsonSerializer.Deserialize<Jwks>(response) ?? throw new InvalidOperationException("Failed to deserialize JWKS");
+            
+            // Cache the full JWKS response
+            if (!string.IsNullOrEmpty(_authOptions.JwksEndpoint))
+            {
+                var cacheHours = _authOptions.JwksCacheHours > 0 ? _authOptions.JwksCacheHours : 24;
+                var cacheOptions = new MemoryCacheEntryOptions()
+                    .SetAbsoluteExpiration(TimeSpan.FromHours(cacheHours));
+                
+                _cache.Set("jwks_cache_" + _authOptions.JwksEndpoint, jwks, cacheOptions);
+            }
+
+            _logger.LogDebug("CorrelationId: {CorrelationId} - Successfully fetched JWKS with {KeyCount} keys", 
+                correlationId, jwks.Keys.Count);
+            
+            return jwks;
+        }
+        catch (TaskCanceledException ex) when (ex.InnerException is TimeoutException)
+        {
+            // Handle timeout specifically
+            throw new HttpRequestException("JWKS request timed out", ex, HttpStatusCode.RequestTimeout);
+        }
+    }
+
+    /// <summary>
+    /// Converts a JWK to RSA public key.
+    /// </summary>
     private RSA? ConvertJwkToRsa(Jwk jwk)
     {
         try
@@ -176,20 +271,40 @@ public class JwksPublicKeyProvider
         }
     }
 
+    /// <summary>
+    /// Decodes base64url-encoded string.
+    /// </summary>
     private byte[] Base64UrlDecode(string input)
     {
-        var output = input;
-        output = output.Replace('-', '+');
-        output = output.Replace('_', '/');
-
-        switch (output.Length % 4)
+        try
         {
-            case 0: break;
-            case 2: output += "=="; break;
-            case 3: output += "="; break;
-            default: throw new ArgumentException("Invalid base64url input");
-        }
+            var output = input;
+            output = output.Replace('-', '+');
+            output = output.Replace('_', '/');
 
-        return Convert.FromBase64String(output);
+            switch (output.Length % 4)
+            {
+                case 0: break;
+                case 2: output += "=="; break;
+                case 3: output += "="; break;
+                default: throw new ArgumentException("Invalid base64url input");
+            }
+
+            return Convert.FromBase64String(output);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to decode base64url string");
+            throw;
+        }
     }
+}
+
+/// <summary>
+/// Custom exception for Redis connection failures.
+/// </summary>
+public class RedisConnectionException : Exception
+{
+    public RedisConnectionException(string message, Exception innerException) 
+        : base(message, innerException) { }
 }

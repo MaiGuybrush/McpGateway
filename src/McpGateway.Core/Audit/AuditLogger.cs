@@ -11,43 +11,90 @@ public class AuditLogger
 {
     private readonly ILogger<AuditLogger> _logger;
     private readonly PiiRedactor _redactor;
+    private readonly string _sink;
+    private readonly string _department;
+    private readonly string _coreVersion;
+    private readonly JsonSerializerOptions _jsonOptions;
 
-    public AuditLogger(ILogger<AuditLogger> logger, PiiRedactor redactor)
+    public AuditLogger(
+        ILogger<AuditLogger> logger, 
+        PiiRedactor redactor, 
+        string sink,
+        string department,
+        string coreVersion,
+        JsonSerializerOptions? jsonOptions = null)
     {
         _logger = logger;
         _redactor = redactor;
+        _sink = sink;
+        _department = department;
+        _coreVersion = coreVersion;
+        _jsonOptions = jsonOptions ?? new JsonSerializerOptions 
+        { 
+            WriteIndented = false,
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        };
     }
 
     /// <summary>
     /// Logs a tool invocation with PII redaction.
     /// </summary>
-    /// <param name="toolName">The tool name.</param>
-    /// <param name="input">The input parameters.</param>
-    /// <param name="output">The output result.</param>
-    public void LogToolInvocation(string toolName, object input, object output)
+    /// <param name="log">The audit log entry.</param>
+    public void LogToolInvocation(ToolInvocationAuditLog log)
     {
-        // TODO: Implement audit logging with PII redaction
-        // - Capture timestamp, caller identity, tool name
-        // - Redact PII from input/output using PiiRedactor
-        // - Write to audit log, stdout, or external system
+        var redactedLog = log with { Parameters = (Dictionary<string, object?>)_redactor.Redact(log.Parameters) };
+        
+        switch (_sink.ToLowerInvariant())
+        {
+            case "applicationinsights":
+            case "appinsights":
+            case "ai":
+                LogToApplicationInsights(redactedLog);
+                break;
+            case "file":
+                LogToFile(redactedLog);
+                break;
+            case "console":
+            case "stdout":
+                LogToConsole(redactedLog);
+                break;
+            default:
+                LogToConsole(redactedLog); // Default fallback
+                break;
+        }
+    }
 
-        _logger.LogInformation("Tool invoked: {ToolName}", toolName);
+    private void LogToApplicationInsights(ToolInvocationAuditLog log)
+    {
+        // For Application Insights, we log as structured data
+        _logger.LogInformation(
+            "ToolInvocation: {@ToolLog}",
+            JsonSerializer.Serialize(log, _jsonOptions));
+    }
+
+    private void LogToFile(ToolInvocationAuditLog log)
+    {
+        // For file logging, we log as JSON
+        var json = JsonSerializer.Serialize(log, _jsonOptions);
+        _logger.LogInformation("AUDIT: {AuditJson}", json);
+    }
+
+    private void LogToConsole(ToolInvocationAuditLog log)
+    {
+        // For console, log formatted for readability
+        _logger.LogInformation(
+            "[{Timestamp}] Tool={ToolName} Agent={AgentId} Success={Success} Duration={DurationMs}ms",
+            log.Timestamp,
+            log.ToolName,
+            log.AgentId,
+            log.Success,
+            log.DurationMs);
+        
+        if (!log.Success && !string.IsNullOrEmpty(log.ErrorMessage))
+        {
+            _logger.LogInformation("  Error: {ErrorMessage}", log.ErrorMessage);
+        }
     }
 }
 
-/// <summary>
-/// Redacts PII from data structures.
-/// </summary>
-public class PiiRedactor
-{
-    /// <summary>
-    /// Redacts PII from an object.
-    /// </summary>
-    /// <param name="data">The data to redact.</param>
-    /// <returns>Redacted data.</returns>
-    public object Redact(object data)
-    {
-        // TODO: Implement PII redaction logic
-        return data;
-    }
-}
+
