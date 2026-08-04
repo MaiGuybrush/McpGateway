@@ -37,6 +37,10 @@ public static class McpGatewayHostExtensions
     {
         // Add required services
         services.AddLogging();
+        services.AddHttpContextAccessor();
+        
+        // Register CorrelationId services
+        services.AddScoped<ICorrelationIdService, CorrelationIdService>();
         
         // Register configuration
         services.AddOptions<McpGatewayOptions>()
@@ -47,9 +51,15 @@ public static class McpGatewayHostExtensions
         // Validate required fields
         services.AddSingleton<IValidateOptions<McpGatewayOptions>, McpGatewayOptionsValidator>();
 
-        // Register health checks
+        // Register individual health checks
+        services.AddTransient<RedisHealthCheck>();
+        services.AddTransient<JwksHealthCheck>();
+        services.AddTransient<GatewayReadinessHealthCheck>();
+        
+        // Register health checks with tags
         services.AddHealthChecks()
-            .AddCheck<GatewayHealthChecks>("gateway", tags: new[] { "live", "ready" });
+            .AddCheck<GatewayHealthChecks>("gateway_live", tags: new[] { "live" })
+            .AddCheck<GatewayReadinessHealthCheck>("gateway_ready", tags: new[] { "ready" });
 
 
 
@@ -141,6 +151,13 @@ public static class McpGatewayHostExtensions
         })
         .WithHttpTransport(httpOptions => httpOptions.Stateless = true);
 
+        // Register Metrics service
+        services.AddSingleton<MetricsService>(sp =>
+        {
+            var options = sp.GetRequiredService<IOptions<McpGatewayOptions>>().Value;
+            return new MetricsService(options.Department ?? "unknown");
+        });
+
         return services;
     }
 
@@ -171,9 +188,13 @@ public static class McpGatewayHostExtensions
             app.MapHealthChecks("/health/ready", new HealthCheckOptions
             {
                 Predicate = check => check.Tags.Contains("ready")
+                // Timeout is handled by cancellation token in the health check implementation
             });
         }
 
+        // Add CorrelationId middleware first (before authentication)
+        app.UseMiddleware<CorrelationIdMiddleware>();
+        
         // Add API-KEY authentication middleware to MCP endpoints
         app.UseMiddleware<ApiKeyAuthenticationMiddleware>();
         
@@ -198,6 +219,10 @@ public static class McpGatewayHostExtensions
         
         logger.LogInformation("MCP Gateway configuration: Department={Department}, RoutePrefix={RoutePrefix}, EnableHealthChecks={EnableHealthChecks}", 
             options.Department, options.RoutePrefix, options.EnableHealthChecks);
+
+        // Initialize Metrics
+        var metrics = app.Services.GetRequiredService<MetricsService>();
+        logger.LogInformation("Metrics initialized for department: {Department}", options.Department);
 
         // Run the application
         logger.LogInformation("Starting MCP Gateway...");

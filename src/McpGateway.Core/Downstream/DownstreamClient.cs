@@ -5,6 +5,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Options;
 using McpGateway.Core.Configuration;
 using McpGateway.Core.Tools;
+using McpGateway.Core.Observability;
 
 namespace McpGateway.Core.Downstream;
 
@@ -17,6 +18,7 @@ public class DownstreamClient : IDownstreamClient
     private readonly IOptions<OcelotOptions> _ocelotOptions;
     private readonly ToolContext? _toolContext;
     private readonly JsonSerializerOptions _jsonOptions;
+    private readonly ICorrelationIdService? _correlationIdService;
 
     /// <summary>
     /// Initializes a new instance of the DownstreamClient.
@@ -24,10 +26,12 @@ public class DownstreamClient : IDownstreamClient
     /// <param name="httpClient">The named HttpClient instance.</param>
     /// <param name="ocelotOptions">Ocelot configuration options.</param>
     /// <param name="toolContext">Optional tool context for header injection.</param>
+    /// <param name="correlationIdService">Optional correlation ID service for request tracking.</param>
     public DownstreamClient(
         HttpClient httpClient,
         IOptions<OcelotOptions> ocelotOptions,
-        ToolContext? toolContext = null)
+        ToolContext? toolContext = null,
+        ICorrelationIdService? correlationIdService = null)
     {
         _httpClient = httpClient;
         _ocelotOptions = ocelotOptions;
@@ -36,6 +40,7 @@ public class DownstreamClient : IDownstreamClient
         {
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase
         };
+        _correlationIdService = correlationIdService;
         
         ConfigureHttpClient();
     }
