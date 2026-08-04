@@ -162,7 +162,7 @@ Sprint 5   第二個部門（驗證可複製性）  ← 觸發式，非排程
 
 | # | 任務 | 人天 | 規格 |
 |---|------|------|------|
-| 3.1 | NTLM 系統帳號（K8s Secret 注入） | 1 | §6、§12.2 |
+| 3.1 | NTLM 系統帳號（環境變數注入） | 1 | §6、§12.2 |
 | 3.2 | Metrics（6 項，含 `mcpgw_core_version`） | 1 | §10.1 |
 | 3.3 | Health checks（live / ready） | 0.5 | §10.2 |
 | 3.4 | 錯誤處理與 CorrelationId 貫穿 | 1 | §9 |
@@ -185,7 +185,7 @@ Sprint 5   第二個部門（驗證可複製性）  ← 觸發式，非排程
 |---|------|------|------|
 | 4.1 | 建立 `McpGateway.{Dept}` 專案（驗證 3 行 `Program.cs`） | 0.5 | 部門 |
 | 4.2 | 撰寫 5–10 支工具（語意封裝，參考既有 `Tools/Manual/`） | 5 | 部門 |
-| 4.3 | Container 化 + K8s 部署資源 | 2 | Core |
+| 4.3 | 部署配置（IIS 或 standalone） | 2 | Core |
 | 4.4 | Ingress 路徑分流設定與驗證 | 1 | Core + DevOps |
 | 4.5 | E2E 測試（SK + Pydantic AI 各接一次） | 1 | Core |
 | 4.6 | **效能量測：含 ingress 的端到端 p95** | 含 4.5 | Core |
