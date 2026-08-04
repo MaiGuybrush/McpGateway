@@ -37,6 +37,7 @@ public static class McpGatewayHostExtensions
     {
         // Add required services
         services.AddLogging();
+        services.AddMemoryCache();
         services.AddHttpContextAccessor();
         
         // Register CorrelationId services
@@ -47,6 +48,11 @@ public static class McpGatewayHostExtensions
             .BindConfiguration("McpGateway")
             .ValidateDataAnnotations()
             .ValidateOnStart();
+
+        // Register AuthOptions for health checks
+        services.AddSingleton<AuthOptions>(sp => 
+            sp.GetRequiredService<IOptions<McpGatewayOptions>>().Value.Auth ?? new AuthOptions()
+        );
 
         // Validate required fields
         services.AddSingleton<IValidateOptions<McpGatewayOptions>, McpGatewayOptionsValidator>();
