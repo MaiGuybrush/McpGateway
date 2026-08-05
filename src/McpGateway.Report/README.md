@@ -34,7 +34,10 @@ dotnet build
     "Auth": {
       "Provider": "JWT",
       "Enabled": true,
-      "JwksEndpoint": "https://your-auth-server/.well-known/jwks.json"
+      "JwksEndpoint": "https://your-auth-server/.well-known/jwks.json",
+      "JwksCacheHours": 24,
+      "ApiKeyServiceUrl": "https://your-auth-server/api-key/validate",
+      "ApiKeyTimeoutSeconds": 3
     },
     "TokenCache": {
       "Type": "Redis",
@@ -44,6 +47,16 @@ dotnet build
 }
 ```
 
+#### 認證提供者選項 (Auth Providers)
+
+`McpGateway.Core` 支援以下幾種認證 Provider（設定於 `McpGateway.Auth.Provider`）：
+
+| Provider | 說明 | 關鍵設定項目 / 環境變數 |
+|---|---|---|
+| **`JWT`** (預設) | Bearer JWT 認證，透過 JWKS 端點驗證公鑰並提取 User/Role Claims。 | `JwksEndpoint` (必要的 JWKS URL)<br>`JwksCacheHours` (公鑰快取小時數，預設 `24`) |
+| **`API-KEY`** | 服務對服務認證，透過集中式 API-KEY 驗證服務檢查效力。 | `ApiKeyServiceUrl` (驗證服務 URL)<br>`ApiKeyTimeoutSeconds` (超時秒數，預設 `3`) |
+| **`NTLM`** | Windows 整合認證，適用於存取不支援 JWT/API-KEY 的下游舊型系統。 | 系統帳號密碼由環境變數注入：<br>`NTLM_SERVICE_ACCOUNT`<br>`NTLM_SERVICE_PASSWORD` |
+| **`None`** / **`Disabled`** | 停用認證 (設定 `"Enabled": false`)，適用於單機開發或測試。 | `"Enabled": false` |
 ### 運行
 
 ```bash

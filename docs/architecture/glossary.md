@@ -244,6 +244,18 @@ JSON 資源的標準路徑表示法，用於識別內部欄位。
 
 **相關 ADR**：[ADR-006](adr/ADR-006-security-model.md)
 
+### **Auth Provider（認證提供者）**
+MCP Gateway 提供呼叫端點與下游存取的身份認證機制，支援以下選項：
+
+- **`JWT`** (預設)：MCP Client 攜帶 Bearer Token，Gateway 透過 JWKS Endpoint 驗證公鑰並提取身份 Claim。
+- **`API-KEY`**：服務對服務認證，由 Central API-KEY Validation Service 驗證身分。
+- **`NTLM`**：Windows 整合認證，透過系統服務帳號（由環境變數 `NTLM_SERVICE_ACCOUNT` / `NTLM_SERVICE_PASSWORD` 注入）向下游舊型系統認證。
+- **`None`** / **`Disabled`**：停用認證（`"Enabled": false`），僅適用於測試與單機開發環境。
+
+**相關 ADR**：[ADR-006](adr/ADR-006-security-model.md)
+
+---
+
 ---
 
 ### **ABAC（Attribute-Based Access Control）**
