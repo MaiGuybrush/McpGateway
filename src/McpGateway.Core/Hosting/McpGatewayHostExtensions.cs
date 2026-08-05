@@ -54,6 +54,13 @@ public static class McpGatewayHostExtensions
             sp.GetRequiredService<IOptions<McpGatewayOptions>>().Value.Auth ?? new AuthOptions()
         );
 
+        // Register OcelotOptions for DownstreamClient
+        services.AddSingleton<IOptions<OcelotOptions>>(sp =>
+        {
+            var gatewayOptions = sp.GetRequiredService<IOptions<McpGatewayOptions>>().Value;
+            return Options.Create(gatewayOptions.Ocelot ?? new OcelotOptions());
+        });
+
         // Validate required fields
         services.AddSingleton<IValidateOptions<McpGatewayOptions>, McpGatewayOptionsValidator>();
 

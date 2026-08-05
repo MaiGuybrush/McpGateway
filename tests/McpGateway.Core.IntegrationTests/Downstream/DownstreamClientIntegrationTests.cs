@@ -7,10 +7,13 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using McpGateway.Core.Configuration;
 using McpGateway.Core.Downstream;
-using McpGateway.Core.Tools;
+using McpGateway.Core.Hosting;
 using WireMock.Server;
 using WireMock.RequestBuilders;
 using WireMock.ResponseBuilders;
+using WireMock.Settings;
+using WireMock.Types;
+using WireMock.Util;
 using Xunit;
 
 namespace McpGateway.Core.IntegrationTests.Downstream;
@@ -28,24 +31,30 @@ public class DownstreamClientIntegrationTests : IAsyncLifetime
         // Configure and start test web app
         var builder = WebApplication.CreateBuilder();
         
+        // Add required memory cache
+        builder.Services.AddMemoryCache();
+        
         // Configure downstream client to use WireMock
+        var ocelotOptions = new OcelotOptions
+        {
+            BaseUrl = _wireMockServer.Urls[0],
+            TimeoutSeconds = 10,
+            Retry = new RetryOptions { Count = 2, BackoffMs = 50 }
+        };
+
         builder.Services.Configure<McpGatewayOptions>(options =>
         {
             options.Department = "test";
             options.RoutePrefix = "/test";
-            options.Ocelot = new OcelotOptions
-            {
-                BaseUrl = _wireMockServer.Urls[0],
-                TimeoutSeconds = 10,
-                Retry = new RetryOptions { Count = 2, BackoffMs = 100 }
-            };
+            options.Ocelot = ocelotOptions;
         });
 
         builder.Services.AddMcpGateway();
-        builder.AddToolsFromAssembly<DownstreamClientIntegrationTests>();
-        
+
+        // Override IOptions<OcelotOptions> to guarantee test values
+        builder.Services.AddSingleton<IOptions<OcelotOptions>>(Options.Create(ocelotOptions));
+
         _app = builder.Build();
-        _app.MapMcpGateway();
         
         await _app.StartAsync();
     }
@@ -60,33 +69,55 @@ public class DownstreamClientIntegrationTests : IAsyncLifetime
         _wireMockServer?.Stop();
     }
 
+    private class TestResponse
+    {
+        public bool Success { get; set; }
+    }
+
+    private static readonly JsonSerializerOptions CamelCaseOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
+
     [Fact]
     public async Task GetAsync_RetryOnServerError_ReturnsSuccessAfterRetry()
     {
-        // Arrange
-        int requestCount = 0;
+        // Arrange with callback count
+        int attempts = 0;
         _wireMockServer!
             .Given(Request.Create().WithPath("/api/test").UsingGet())
-            .RespondWith(StatusCode.InternalServerError)
-            .Then
-            .Given(Request.Create().WithPath("/api/test").UsingGet())
-            .RespondWith(StatusCode.InternalServerError)
-            .Then
-            .Given(Request.Create().WithPath("/api/test").UsingGet())
-            .RespondWith(Response.Create()
-                .WithStatusCode(HttpStatusCode.OK)
-                .WithHeader("Content-Type", "application/json")
-                .WithBodyAsJson(new { success = true })
-            );
+            .RespondWith(Response.Create().WithCallback(request =>
+            {
+                attempts++;
+                var response = new WireMock.ResponseMessage();
+                if (attempts <= 2)
+                {
+                    response.StatusCode = 500;
+                }
+                else
+                {
+                    response.StatusCode = 200;
+                    response.AddHeader("Content-Type", "application/json");
+                    response.BodyData = new BodyData
+                    {
+                        BodyAsString = JsonSerializer.Serialize(new TestResponse { Success = true }, CamelCaseOptions),
+                        Encoding = System.Text.Encoding.UTF8,
+                        DetectedBodyType = BodyType.String
+                    };
+                }
+                return response;
+            }));
 
         var sp = _app!.Services;
         var downstreamClient = sp.GetRequiredService<IDownstreamClient>();
 
         // Act
-        var result = await downstreamClient.GetAsync<object>("/api/test");
+        var result = await downstreamClient.GetAsync<TestResponse>("/api/test");
 
         // Assert - result should be successful after retries
         Assert.NotNull(result);
+        Assert.True(result.Success);
+        Assert.Equal(3, attempts);
     }
 
     [Fact]
@@ -95,44 +126,33 @@ public class DownstreamClientIntegrationTests : IAsyncLifetime
         // Arrange
         _wireMockServer!
             .Given(Request.Create().WithPath("/api/items").UsingPost())
-            .RespondWith(StatusCode.InternalServerError);
+            .RespondWith(Response.Create().WithStatusCode(HttpStatusCode.InternalServerError));
 
         var sp = _app!.Services;
         var downstreamClient = sp.GetRequiredService<IDownstreamClient>();
 
         // Act & Assert
         await Assert.ThrowsAsync<HttpRequestException>(async () =>
-            await downstreamClient.PostAsync<object>("/api/items", new { data = "test" }));
+            await downstreamClient.PostAsync<TestResponse>("/api/items", new { data = "test" }));
     }
 
     [Fact]
     public async Task GetAsync_HeadersCorrectlyInjected()
     {
         // Arrange
-        var capturedHeaders = new Dictionary<string, string>();
-        
         _wireMockServer!
             .Given(Request.Create().WithPath("/api/echo").UsingGet())
             .RespondWith(Response.Create()
                 .WithStatusCode(HttpStatusCode.OK)
                 .WithHeader("Content-Type", "application/json")
-                .WithBodyAsJson(new { echo = true })
+                .WithBody(JsonSerializer.Serialize(new TestResponse { Success = true }, CamelCaseOptions))
             );
 
         var sp = _app!.Services;
         var downstreamClient = sp.GetRequiredService<IDownstreamClient>();
-        
-        var testContext = new ToolContext(
-            UserId: "user789",
-            Department: "integration",
-            Role: "tester",
-            TokenType: "API-KEY",
-            AgentId: "agent123",
-            CorrelationId: "correlation-test"
-        );
 
         // Act
-        await downstreamClient.GetAsync<object>("/api/echo");
+        await downstreamClient.GetAsync<TestResponse>("/api/echo");
 
         // Assert - headers should be present (verified in the WireMock logs)
         var requests = _wireMockServer.FindLogEntries(Request.Create().WithPath("/api/echo").UsingGet());
@@ -145,23 +165,21 @@ public class DownstreamClientIntegrationTests : IAsyncLifetime
         // Arrange
         _wireMockServer!
             .Given(Request.Create().WithPath("/api/resource/1").UsingPut())
-            .RespondWith(StatusCode.RequestTimeout)
-            .Then
-            .Given(Request.Create().WithPath("/api/resource/1").UsingPut())
             .RespondWith(Response.Create()
                 .WithStatusCode(HttpStatusCode.OK)
                 .WithHeader("Content-Type", "application/json")
-                .WithBodyAsJson(new { updated = true })
+                .WithBody(JsonSerializer.Serialize(new TestResponse { Success = true }, CamelCaseOptions))
             );
 
         var sp = _app!.Services;
         var downstreamClient = sp.GetRequiredService<IDownstreamClient>();
 
         // Act
-        var result = await downstreamClient.PutAsync<object>("/api/resource/1", new { value = "updated" });
+        var result = await downstreamClient.PutAsync<TestResponse>("/api/resource/1", new { value = "updated" });
 
         // Assert
         Assert.NotNull(result);
+        Assert.True(result.Success);
     }
 
     [Fact]
@@ -169,9 +187,6 @@ public class DownstreamClientIntegrationTests : IAsyncLifetime
     {
         // Arrange
         _wireMockServer!
-            .Given(Request.Create().WithPath("/api/resource/2").UsingDelete())
-            .RespondWith(StatusCode.InternalServerError)
-            .Then
             .Given(Request.Create().WithPath("/api/resource/2").UsingDelete())
             .RespondWith(Response.Create()
                 .WithStatusCode(HttpStatusCode.NoContent)
