@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text.RegularExpressions;
@@ -8,11 +9,12 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using McpGateway.Core.Configuration;
 using McpGateway.Core.Tools;
+using ModelContextProtocol.Server;
 
 namespace McpGateway.Core.Validation;
 
 /// <summary>
-/// Validates tools during startup according to the 6 validation rules.
+/// Validates tools during startup according to the validation rules.
 /// </summary>
 public class ToolStartupValidator : IStartupValidator
 {
@@ -37,7 +39,7 @@ public class ToolStartupValidator : IStartupValidator
     }
 
     /// <summary>
-    /// Validates all tools according to the 6 validation rules.
+    /// Validates all tools according to the validation rules.
     /// </summary>
     public IReadOnlyList<ValidationError> Validate()
     {
@@ -62,6 +64,9 @@ public class ToolStartupValidator : IStartupValidator
         // Validation #6: Orphan description override paths (warning only)
         ValidateOrphanDescriptionPaths(tools, errors);
 
+        // Validation #7: Tool Output DTO properties [Description] check (warning only)
+        ValidateOutputDescriptions(tools);
+
         return errors.AsReadOnly();
     }
 
@@ -74,6 +79,7 @@ public class ToolStartupValidator : IStartupValidator
             var toolTypes = assembly.GetTypes()
                 .Where(t => t.IsClass && !t.IsAbstract &&
                            (t.GetCustomAttribute<McpToolAttribute>() != null ||
+                            t.GetCustomAttribute<McpServerToolTypeAttribute>() != null ||
                             (t.BaseType?.IsGenericType == true && 
                              t.BaseType.GetGenericTypeDefinition() == typeof(ToolBase<,>))))
                 .ToList();
@@ -211,6 +217,84 @@ public class ToolStartupValidator : IStartupValidator
                 _logger.LogWarning("Tool {ToolName} has no XML documentation file at {XmlPath}. Consider adding XML documentation for better tool descriptions",
                     tool.Name, xmlDocFile);
             }
+        }
+    }
+
+    private void ValidateOutputDescriptions(List<Type> tools)
+    {
+        foreach (var tool in tools)
+        {
+            var outputTypes = new HashSet<Type>();
+
+            // 1. Check ToolBase<TInput, TOutput>
+            if (tool.BaseType?.IsGenericType == true && 
+                tool.BaseType.GetGenericTypeDefinition() == typeof(ToolBase<,>))
+            {
+                var outputType = tool.BaseType.GetGenericArguments()[1];
+                outputTypes.Add(outputType);
+            }
+
+            // 2. Check [McpServerTool] methods
+            var methods = tool.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static)
+                .Where(m => m.GetCustomAttribute<McpServerToolAttribute>() != null);
+
+            foreach (var method in methods)
+            {
+                var retType = method.ReturnType;
+                if (retType.IsGenericType && retType.GetGenericTypeDefinition() == typeof(Task<>))
+                {
+                    retType = retType.GetGenericArguments()[0];
+                }
+                outputTypes.Add(retType);
+            }
+
+            foreach (var outputType in outputTypes)
+            {
+                if (outputType == typeof(void) || outputType == typeof(string) || outputType.IsPrimitive || outputType == typeof(object))
+                    continue;
+
+                CheckDtoProperties(tool.Name, outputType);
+            }
+        }
+    }
+
+    private void CheckDtoProperties(string toolName, Type dtoType, HashSet<Type>? visited = null)
+    {
+        visited ??= new HashSet<Type>();
+        if (!visited.Add(dtoType) || dtoType.IsPrimitive || dtoType == typeof(string) || dtoType == typeof(DateTime) || dtoType == typeof(DateTimeOffset))
+            return;
+
+        var properties = dtoType.GetProperties(BindingFlags.Public | BindingFlags.Instance);
+        var missingDescriptionProps = new List<string>();
+
+        foreach (var prop in properties)
+        {
+            var descAttr = prop.GetCustomAttribute<DescriptionAttribute>();
+            if (descAttr == null || string.IsNullOrWhiteSpace(descAttr.Description))
+            {
+                missingDescriptionProps.Add(prop.Name);
+            }
+
+            // Check if nested collection or class
+            var propType = prop.PropertyType;
+            if (propType.IsGenericType && typeof(System.Collections.IEnumerable).IsAssignableFrom(propType))
+            {
+                var itemType = propType.GetGenericArguments().FirstOrDefault();
+                if (itemType != null && itemType.IsClass && itemType != typeof(string))
+                {
+                    CheckDtoProperties(toolName, itemType, visited);
+                }
+            }
+            else if (propType.IsClass && propType != typeof(string) && !propType.IsPrimitive)
+            {
+                CheckDtoProperties(toolName, propType, visited);
+            }
+        }
+
+        if (missingDescriptionProps.Any())
+        {
+            _logger.LogWarning("Output DTO {DtoType} for tool {ToolName} has properties missing [Description] attribute: {Properties}. Adding descriptions improves LLM comprehension.",
+                dtoType.Name, toolName, string.Join(", ", missingDescriptionProps));
         }
     }
 }
