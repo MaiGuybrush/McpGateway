@@ -37,21 +37,24 @@ public class GatewayHealthChecks : IHealthCheck
 }
 
 /// <summary>
-/// Readiness health check that combines Redis and JWKS checks.
+/// Readiness health check that combines Redis, JWKS, and UAC API checks.
 /// </summary>
 public class GatewayReadinessHealthCheck : IHealthCheck
 {
     private readonly RedisHealthCheck _redisCheck;
     private readonly JwksHealthCheck _jwksCheck;
+    private readonly UacApiHealthCheck _uacApiCheck;
     private readonly ILogger<GatewayReadinessHealthCheck> _logger;
 
     public GatewayReadinessHealthCheck(
         RedisHealthCheck redisCheck,
         JwksHealthCheck jwksCheck,
+        UacApiHealthCheck uacApiCheck,
         ILogger<GatewayReadinessHealthCheck> logger)
     {
         _redisCheck = redisCheck;
         _jwksCheck = jwksCheck;
+        _uacApiCheck = uacApiCheck;
         _logger = logger;
     }
 
@@ -61,7 +64,7 @@ public class GatewayReadinessHealthCheck : IHealthCheck
     {
         try
         {
-            var checks = new List<(string name, HealthCheckResult result)>(2);
+            var checks = new List<(string name, HealthCheckResult result)>(3);
 
             // Check Redis if configured
             var redisResult = await _redisCheck.CheckHealthAsync(context, cancellationToken);
@@ -70,6 +73,10 @@ public class GatewayReadinessHealthCheck : IHealthCheck
             // Check JWKS if endpoint configured
             var jwksResult = await _jwksCheck.CheckHealthAsync(context, cancellationToken);
             checks.Add(("JWKS", jwksResult));
+
+            // Check UAC API if configured
+            var uacResult = await _uacApiCheck.CheckHealthAsync(context, cancellationToken);
+            checks.Add(("UAC_API", uacResult));
 
             // Check if any check failed
             var failedChecks = checks.Where(c => c.result.Status == HealthStatus.Unhealthy).ToList();

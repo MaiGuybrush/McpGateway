@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ADR-010 工作規劃簡報：MCP Tool 欄位標準化與結構化 DTO 治理</title>
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <!-- Mermaid.js -->
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'dark',
+      themeVariables: {
+        darkMode: true,
+        background: '#1e293b',
+        primaryColor: '#3b82f6',
+        primaryTextColor: '#f8fafc',
+        primaryBorderColor: '#60a5fa',
+        lineColor: '#94a3b8',
+        secondaryColor: '#334155',
+        tertiaryColor: '#0f172a'
+      }
+    });
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Noto+Sans+TC:wght@300;400;500;700;900&display=swap');
+    
+    body {
+      font-family: 'Inter', 'Noto Sans TC', system-ui, -apple-system, sans-serif;
+      background-color: #0b0f19;
+      color: #f8fafc;
+      overflow: hidden;
+    }
+
+    .slide-container {
+      position: relative;
+      width: 100%;
+      height: calc(100vh - 128px);
+    }
+
+    .slide {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1), transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      transform: translateY(12px);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .slide.active {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+      transform: translateY(0);
+    }
+
+    .glass-card {
+      background: rgba(30, 41, 59, 0.65);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: 0 10px 30px 0 rgba(0, 0, 0, 0.4);
+    }
+
+    .glass-card-highlight {
+      background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(30, 41, 59, 0.75) 100%);
+      border: 1px solid rgba(96, 165, 250, 0.3);
+      box-shadow: 0 10px 30px -5px rgba(59, 130, 246, 0.25);
+    }
+
+    .gradient-text-blue {
+      background: linear-gradient(135deg, #93c5fd 0%, #3b82f6 50%, #1d4ed8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .gradient-accent {
+      background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.25rem 0.75rem;
+      border-radius: 9999px;
+      font-size: 0.8125rem;
+      font-weight: 600;
+    }
+
+    .code-chip {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      padding: 0.15rem 0.45rem;
+      border-radius: 0.375rem;
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      font-size: 0.85em;
+    }
+
+    @media print {
+      body {
+        overflow: visible;
+        background: #0f172a;
+      }
+      .slide-container {
+        height: auto;
+      }
+      .slide {
+        position: relative;
+        opacity: 1;
+        visibility: visible;
+        display: block;
+        page-break-after: always;
+        margin-bottom: 2rem;
+        transform: none;
+      }
+      header, footer, .nav-controls {
+        display: none !important;
+      }
+    }
+  </style>
+</head>
+<body class="h-screen w-screen flex flex-col justify-between selection:bg-blue-500 selection:text-white">
+
+  <!-- Header Top Bar -->
+  <header class="h-14 px-8 border-b border-slate-800 flex items-center justify-between bg-slate-900/80 backdrop-blur z-30">
+    <div class="flex items-center space-x-3">
+      <div class="w-8 h-8 rounded-lg gradient-accent flex items-center justify-center font-extrabold text-white shadow-lg shadow-blue-500/30">
+        <i class="fa-solid fa-cube text-sm"></i>
+      </div>
+      <div class="flex items-center space-x-2">
+        <span class="font-bold text-base tracking-wide text-slate-100">McpGateway 架構治理簡報</span>
+        <span class="badge bg-blue-500/20 text-blue-400 border border-blue-500/30 text-xs">
+          <i class="fa-solid fa-code-branch mr-1.5"></i>ADR-010
+        </span>
+        <span class="badge bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs">
+          <i class="fa-solid fa-check-double mr-1.5"></i>Accepted
+        </span>
+      </div>
+    </div>
+    
+    <div class="flex items-center space-x-6 text-sm text-slate-400">
+      <span id="slide-title-indicator" class="font-medium text-slate-200">1. 核心定位與願景</span>
+      <span class="text-slate-600">|</span>
+      <span id="slide-counter" class="font-mono font-semibold text-blue-400">01 / 04</span>
+    </div>
+  </header>
+
+  <!-- Slide Canvas Container -->
+  <main class="flex-1 relative overflow-hidden px-8 py-3 max-w-7xl mx-auto w-full">
+    <div class="slide-container">
+
+      <!-- ========================================== -->
+      <!-- SLIDE 1: Vision & Executive Summary -->
+      <!-- ========================================== -->
+      <section id="slide-1" class="slide active">
+        <div class="grid grid-cols-12 gap-8 items-center w-full">
+          <div class="col-span-7 space-y-5">
+            <div class="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-400 text-sm font-medium">
+              <i class="fa-solid fa-compass-drafting mr-1"></i> 企業級 AI Agent 生態系關鍵分水嶺
+            </div>
+            
+            <h1 class="text-3xl lg:text-4xl font-extrabold tracking-tight text-white leading-tight">
+              MCP Tool 欄位命名標準化與<br>
+              <span class="gradient-text-blue">結構化 DTO 編譯期治理規畫</span>
+            </h1>
+            
+            <p class="text-slate-300 text-base leading-relaxed">
+              本工作規劃旨在解決跨業務系統（MES、EAP、Report、SPC、QC 等）欄位命名分歧與 Markdown 純文字回傳限制，將散落的「API 包裝器」升級為具備<strong>自主跨系統協同能力（Multi-Agent Collaboration）</strong>的企業級工具生態系。
+            </p>
+
+            <div class="grid grid-cols-2 gap-4 pt-1">
+              <div class="glass-card-highlight p-4 rounded-xl space-y-1.5">
+                <div class="text-blue-400 text-xs font-semibold uppercase tracking-wider flex items-center">
+                  <i class="fa-solid fa-bolt mr-1.5"></i> 核心轉型目標
+                </div>
+                <div class="text-xl font-bold text-white">消滅孤島，賦能協同</div>
+                <p class="text-slate-300 text-xs leading-normal">
+                  建立雙層詞庫與強型別 DTO，讓 LLM 進行 Tool Chaining 時零猜測、零換算。
+                </p>
+              </div>
+
+              <div class="glass-card p-4 rounded-xl space-y-1.5 border-emerald-500/30 bg-emerald-950/20">
+                <div class="text-emerald-400 text-xs font-semibold uppercase tracking-wider flex items-center">
+                  <i class="fa-solid fa-shield-halved mr-1.5"></i> 推動落地策略
+                </div>
+                <div class="text-xl font-bold text-white">低摩擦「鋪平道路」</div>
+                <p class="text-slate-300 text-xs leading-normal">
+                  不採強制編譯報錯（Hard Error），以 Roslyn 燈泡一鍵修復引導平滑過渡。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-span-5 space-y-4">
+            <div class="glass-card p-5 rounded-2xl border border-slate-700/60 shadow-2xl">
+              <h3 class="text-sm font-semibold text-slate-200 mb-3 flex items-center justify-between">
+                <span><i class="fa-solid fa-layer-group text-blue-400 mr-2"></i>架構升級全景對比</span>
+                <span class="text-xs text-slate-400">Before vs. After</span>
+              </h3>
+              
+              <div class="space-y-3">
+                <div class="p-3 rounded-lg bg-red-950/30 border border-red-500/30 text-xs space-y-1">
+                  <div class="font-bold text-red-300 flex items-center">
+                    <i class="fa-solid fa-circle-xmark mr-1.5"></i> 過去：各自為政 (Siloed)
+                  </div>
+                  <ul class="text-slate-300 list-disc list-inside space-y-0.5 text-[11px]">
+                    <li>同一概念各自命名：<span class="code-chip text-red-300">ProductCode</span> vs <span class="code-chip text-red-300">prod_id</span></li>
+                    <li>純文字 Markdown 回傳，無法二次排序與聚合運算</li>
+                    <li>跨工具鏈接（Tool Chaining）需浪費大量 Token 猜測</li>
+                  </ul>
+                </div>
+
+                <div class="p-3 rounded-lg bg-emerald-950/30 border border-emerald-500/30 text-xs space-y-1">
+                  <div class="font-bold text-emerald-300 flex items-center">
+                    <i class="fa-solid fa-circle-check mr-1.5"></i> 未來：統一契約 (Standardized)
+                  </div>
+                  <ul class="text-slate-300 list-disc list-inside space-y-0.5 text-[11px]">
+                    <li>全域核心字典統一名稱：標準 <span class="code-chip text-emerald-300">productId</span></li>
+                    <li>結構化不可變 DTO，自動暴露 JSON OutputSchema</li>
+                    <li>Roslyn IDE 燈泡一鍵自動修復，開發零痛感</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========================================== -->
+      <!-- SLIDE 2: Problems & Business Impact -->
+      <!-- ========================================== -->
+      <section id="slide-2" class="slide">
+        <div class="space-y-4 w-full">
+          <div>
+            <div class="badge bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs mb-1">
+              <i class="fa-solid fa-triangle-exclamation mr-1.5"></i> 現況痛點與業務損失
+            </div>
+            <h2 class="text-2xl lg:text-3xl font-extrabold text-white">
+              為什麼必須進行標準化？現行四大阻礙
+            </h2>
+          </div>
+
+          <div class="grid grid-cols-12 gap-5">
+            <!-- Pain 1 -->
+            <div class="col-span-6 glass-card p-4 rounded-xl border-l-4 border-l-red-500 flex flex-col justify-between space-y-2">
+              <div>
+                <div class="flex items-center justify-between">
+                  <span class="font-bold text-slate-100 text-sm flex items-center">
+                    <i class="fa-solid fa-brain text-red-400 mr-2"></i> 1. 命名歧異引發 LLM 幻覺與 Token 浪費
+                  </span>
+                  <span class="text-[11px] px-2 py-0.5 rounded bg-red-500/20 text-red-300 font-mono">High Risk</span>
+                </div>
+                <p class="text-xs text-slate-300 mt-2 leading-relaxed">
+                  相同概念在 Gateway A 叫 <code class="code-chip">ProductCode</code>、Gateway B 叫 <code class="code-chip">prod_id</code>、Gateway C 叫 <code class="code-chip">materialNo</code>。當 Agent 執行跨系統複合任務（如「查詢 WIP 異常並比對機台警報」）時，需耗費大量 Context 進行推論猜測，大幅提升對齊失敗率。
+                </p>
+              </div>
+              <div class="bg-slate-900/60 p-2.5 rounded text-[11px] text-slate-400 flex items-center justify-between">
+                <span>影響：多 Agent 協同（Multi-Agent）任務中斷與判斷失真</span>
+              </div>
+            </div>
+
+            <!-- Pain 2 -->
+            <div class="col-span-6 glass-card p-4 rounded-xl border-l-4 border-l-amber-500 flex flex-col justify-between space-y-2">
+              <div>
+                <div class="flex items-center justify-between">
+                  <span class="font-bold text-slate-100 text-sm flex items-center">
+                    <i class="fa-solid fa-file-lines text-amber-400 mr-2"></i> 2. 純文字/Markdown 限制下游運算能力
+                  </span>
+                  <span class="text-[11px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono">Bottleneck</span>
+                </div>
+                <p class="text-xs text-slate-300 mt-2 leading-relaxed">
+                  現有 Tool 以 Markdown 字串回傳資料，僅方便人類肉眼檢視，但 <strong>LLM 無法進行精確過濾、排序、聚合計算</strong>，下游自動化系統亦難以作為程式化 API 進行二次加工處理。
+                </p>
+              </div>
+              <div class="bg-slate-900/60 p-2.5 rounded text-[11px] text-slate-400 flex items-center justify-between">
+                <span>影響：無法支援進階資料統計與儀表板圖表自動生成</span>
+              </div>
+            </div>
+
+            <!-- Pain 3 -->
+            <div class="col-span-6 glass-card p-4 rounded-xl border-l-4 border-l-blue-500 flex flex-col justify-between space-y-2">
+              <div>
+                <div class="flex items-center justify-between">
+                  <span class="font-bold text-slate-100 text-sm flex items-center">
+                    <i class="fa-solid fa-comment-slash text-blue-400 mr-2"></i> 3. 缺乏欄位說明 (Description) 標準
+                  </span>
+                  <span class="text-[11px] px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 font-mono">Semantic Loss</span>
+                </div>
+                <p class="text-xs text-slate-300 mt-2 leading-relaxed">
+                  開發者定義輸出物件時常遺漏中文語意註解，導致 MCP Tool 自動生成的 Output Schema 缺乏明確業務說明，LLM 在面對冷僻縮寫時經常誤解欄位用途。
+                </p>
+              </div>
+              <div class="bg-slate-900/60 p-2.5 rounded text-[11px] text-slate-400 flex items-center justify-between">
+                <span>影響：LLM 輸出語意對齊品質下降、使用者信任度降低</span>
+              </div>
+            </div>
+
+            <!-- Pain 4 -->
+            <div class="col-span-6 glass-card p-4 rounded-xl border-l-4 border-l-purple-500 flex flex-col justify-between space-y-2">
+              <div>
+                <div class="flex items-center justify-between">
+                  <span class="font-bold text-slate-100 text-sm flex items-center">
+                    <i class="fa-solid fa-hand-fist text-purple-400 mr-2"></i> 4. 歷史包袱導致「硬性阻斷」推行阻力過大
+                  </span>
+                  <span class="text-[11px] px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 font-mono">Adoption Risk</span>
+                </div>
+                <p class="text-xs text-slate-300 mt-2 leading-relaxed">
+                  各部門資料庫與既有程式碼具有深厚歷史命名習慣。若在編譯期採取強制錯誤（Hard Error）阻斷，將使各單位專案無法順利建置，造成開發者強烈抗拒。
+                </p>
+              </div>
+              <div class="bg-slate-900/60 p-2.5 rounded text-[11px] text-slate-400 flex items-center justify-between">
+                <span>關鍵考量：必須提供「引導提示 + 一鍵修復」的柔性過渡手段</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========================================== -->
+      <!-- SLIDE 3: Solution - The 4 Pillars -->
+      <!-- ========================================== -->
+      <section id="slide-3" class="slide">
+        <div class="space-y-4 w-full">
+          <div class="flex justify-between items-end">
+            <div>
+              <div class="badge bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs mb-1">
+                <i class="fa-solid fa-cubes mr-1.5"></i> 核心決策與技術架構
+              </div>
+              <h2 class="text-2xl lg:text-3xl font-extrabold text-white">
+                ADR-010 四大治理支柱 (4 Pillars)
+              </h2>
+            </div>
+            <div class="text-xs text-slate-400">完整涵蓋：型別契約、雙層詞庫、編譯器治理、啟動防禦</div>
+          </div>
+
+          <div class="grid grid-cols-12 gap-4">
+            <!-- Pillar 1 -->
+            <div class="col-span-3 glass-card p-4 rounded-xl flex flex-col justify-between border-t-2 border-t-blue-500 hover:border-blue-400 transition">
+              <div class="space-y-2">
+                <div class="w-8 h-8 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-sm">
+                  1
+                </div>
+                <h3 class="font-bold text-slate-100 text-sm">強型別結構化 DTO</h3>
+                <p class="text-[12px] text-slate-300 leading-relaxed">
+                  全面淘汰 Markdown 拼接字串，改以不可變 <code class="code-chip">Record DTO</code> 回傳。標註 <code class="code-chip">UseStructuredContent = true</code>，自動產生標準 JSON Schema（<code class="code-chip">outputSchema</code>）。
+                </p>
+              </div>
+              <div class="pt-2 border-t border-slate-800 text-[11px] text-blue-300">
+                <i class="fa-solid fa-check mr-1"></i> LLM 具備精確過濾與聚合能力
+              </div>
+            </div>
+
+            <!-- Pillar 2 -->
+            <div class="col-span-3 glass-card p-4 rounded-xl flex flex-col justify-between border-t-2 border-t-indigo-500 hover:border-indigo-400 transition">
+              <div class="space-y-2">
+                <div class="w-8 h-8 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center font-bold text-sm">
+                  2
+                </div>
+                <h3 class="font-bold text-slate-100 text-sm">雙層詞庫治理體系</h3>
+                <p class="text-[12px] text-slate-300 leading-relaxed">
+                  <strong>Tier 1 全域字典</strong>：集中維護製造/半導體共通概念（<code class="code-chip">productId</code>, <code class="code-chip">lotId</code>, <code class="code-chip">eqptId</code> 等）。<br>
+                  <strong>Tier 2 本地字典</strong>：各專案由 <code class="code-chip">mcp-glossary.json</code> 自主擴充業務特有詞彙。
+                </p>
+              </div>
+              <div class="pt-2 border-t border-slate-800 text-[11px] text-indigo-300">
+                <i class="fa-solid fa-check mr-1"></i> 中央規範與部門自治兼得
+              </div>
+            </div>
+
+            <!-- Pillar 3 -->
+            <div class="col-span-3 glass-card p-4 rounded-xl flex flex-col justify-between border-t-2 border-t-amber-500 hover:border-amber-400 transition">
+              <div class="space-y-2">
+                <div class="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold text-sm">
+                  3
+                </div>
+                <h3 class="font-bold text-slate-100 text-sm">Roslyn 編譯器分析器</h3>
+                <p class="text-[12px] text-slate-300 leading-relaxed">
+                  引入 <code class="code-chip">McpGateway.Analyzers</code>：<br>
+                  • <strong>MCP0010 (Warning)</strong>：偵測舊別名並建議標準詞<br>
+                  • <strong>MCP0011 (Warning)</strong>：提醒補齊 Description<br>
+                  • <strong>CodeFix</strong>：提供 IDE 燈泡一鍵自動修復！
+                </p>
+              </div>
+              <div class="pt-2 border-t border-slate-800 text-[11px] text-amber-300">
+                <i class="fa-solid fa-check mr-1"></i> 開發即時提示，一秒完成修正
+              </div>
+            </div>
+
+            <!-- Pillar 4 -->
+            <div class="col-span-3 glass-card p-4 rounded-xl flex flex-col justify-between border-t-2 border-t-emerald-500 hover:border-emerald-400 transition">
+              <div class="space-y-2">
+                <div class="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-sm">
+                  4
+                </div>
+                <h3 class="font-bold text-slate-100 text-sm">啟動期遞迴防禦</h3>
+                <p class="text-[12px] text-slate-300 leading-relaxed">
+                  擴充 <code class="code-chip">ToolStartupValidator</code>（Rule #7），於 Gateway 啟動時反射掃描註冊 Tool 的 DTO 物件圖譜（支援巢狀與清單），若有遺漏 Description 輸出 Warning Log，不阻擋服務上線。
+                </p>
+              </div>
+              <div class="pt-2 border-t border-slate-800 text-[11px] text-emerald-300">
+                <i class="fa-solid fa-check mr-1"></i> 上線前最後防線，零當機風險
+              </div>
+            </div>
+          </div>
+
+          <!-- Bottom Visual Workflow -->
+          <div class="glass-card p-3.5 rounded-xl flex items-center justify-between text-xs bg-slate-900/60 border border-slate-700/80">
+            <div class="flex items-center space-x-2">
+              <span class="px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 font-semibold">開發期</span>
+              <span class="text-slate-300">VS / VS Code 寫 Code</span>
+            </div>
+            <i class="fa-solid fa-arrow-right text-slate-600"></i>
+            <div class="flex items-center space-x-2">
+              <span class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 font-semibold">分析器輔助</span>
+              <span class="text-slate-300">Roslyn 警告 + 燈泡一鍵自動更名</span>
+            </div>
+            <i class="fa-solid fa-arrow-right text-slate-600"></i>
+            <div class="flex items-center space-x-2">
+              <span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-semibold">啟動檢驗</span>
+              <span class="text-slate-300">StartupValidator 遞迴驗證 OutputSchema</span>
+            </div>
+            <i class="fa-solid fa-arrow-right text-slate-600"></i>
+            <div class="flex items-center space-x-2">
+              <span class="px-2 py-0.5 rounded bg-purple-500/20 text-purple-400 font-semibold">Agent 賦能</span>
+              <span class="text-slate-300">跨 Gateway 零阻礙鏈接協同</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========================================== -->
+      <!-- SLIDE 4: Paved Road Strategy & ROI -->
+      <!-- ========================================== -->
+      <section id="slide-4" class="slide">
+        <div class="space-y-4 w-full">
+          <div class="flex justify-between items-end">
+            <div>
+              <div class="badge bg-blue-500/10 border border-blue-500/30 text-blue-400 text-xs mb-1">
+                <i class="fa-solid fa-road mr-1.5"></i> 落地效益與平滑過渡策略
+              </div>
+              <h2 class="text-2xl lg:text-3xl font-extrabold text-white">
+                「鋪平道路」治理哲學與業務預期效益
+              </h2>
+            </div>
+            <span class="badge bg-emerald-500/20 text-emerald-400 text-xs font-semibold">
+              <i class="fa-solid fa-chart-line mr-1"></i> 高 ROI、低推動阻力
+            </span>
+          </div>
+
+          <div class="grid grid-cols-12 gap-5">
+            <!-- Strategic Alignment Table -->
+            <div class="col-span-7 glass-card p-4 rounded-xl space-y-3">
+              <h3 class="text-sm font-bold text-slate-200 flex items-center">
+                <i class="fa-solid fa-scale-balanced text-blue-400 mr-2"></i> 為何不採「強制阻斷」？實踐以開發者體驗為核心
+              </h3>
+              
+              <div class="overflow-hidden rounded-lg border border-slate-700/80 text-xs">
+                <table class="w-full text-left">
+                  <thead class="bg-slate-800/80 text-slate-300 font-semibold border-b border-slate-700">
+                    <tr>
+                      <th class="p-2.5">治理維度</th>
+                      <th class="p-2.5 text-red-300">強制阻斷模式 (Hard Error)</th>
+                      <th class="p-2.5 text-emerald-300">ADR-010 鋪平道路模式 (Paved Road)</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-800 text-slate-300 text-[11.5px]">
+                    <tr class="hover:bg-slate-800/40">
+                      <td class="p-2.5 font-medium text-slate-200">編譯與建置</td>
+                      <td class="p-2.5 text-red-400">違反規則即編譯失敗，中斷既有專案</td>
+                      <td class="p-2.5 text-emerald-400">Warning / Info 提示，不阻斷 Build</td>
+                    </tr>
+                    <tr class="hover:bg-slate-800/40">
+                      <td class="p-2.5 font-medium text-slate-200">修復成本</td>
+                      <td class="p-2.5">工程師手動查詢規範與手動修改代碼</td>
+                      <td class="p-2.5 text-emerald-400 font-medium">IDE 燈泡「一鍵修復」自動套用標準命名</td>
+                    </tr>
+                    <tr class="hover:bg-slate-800/40">
+                      <td class="p-2.5 font-medium text-slate-200">業務特殊例外</td>
+                      <td class="p-2.5">無法彈性處理特殊專案欄位</td>
+                      <td class="p-2.5">支援 local 字典擴充與 pragma 壓制</td>
+                    </tr>
+                    <tr class="hover:bg-slate-800/40">
+                      <td class="p-2.5 font-medium text-slate-200">推動結果</td>
+                      <td class="p-2.5 text-red-400">業務單位強烈抗拒、推遲採用</td>
+                      <td class="p-2.5 text-emerald-400 font-semibold">自發性快速遵循，平滑完成標準化</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Expected Benefits -->
+            <div class="col-span-5 space-y-3">
+              <div class="glass-card p-4 rounded-xl border-l-4 border-l-emerald-500 space-y-1.5">
+                <div class="font-bold text-slate-100 text-xs flex items-center justify-between">
+                  <span class="flex items-center text-emerald-400">
+                    <i class="fa-solid fa-link mr-2"></i> 1. 跨工具鏈接能力躍升 (Tool Chaining)
+                  </span>
+                  <span class="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded">Core Value</span>
+                </div>
+                <p class="text-[11.5px] text-slate-300 leading-normal">
+                  所有 Gateway 實體主鍵與通用狀態命名完全一致，Agent 可將 A 系統查出的 <code class="code-chip">lotId</code> / <code class="code-chip">productId</code> 零推理成本無縫傳遞至 B 系統。
+                </p>
+              </div>
+
+              <div class="glass-card p-4 rounded-xl border-l-4 border-l-blue-500 space-y-1.5">
+                <div class="font-bold text-slate-100 text-xs flex items-center justify-between">
+                  <span class="flex items-center text-blue-400">
+                    <i class="fa-solid fa-chart-pie mr-2"></i> 2. 結構化二次運算與自動圖表化
+                  </span>
+                  <span class="text-[10px] bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded">Automation</span>
+                </div>
+                <p class="text-[11.5px] text-slate-300 leading-normal">
+                  前端 UI 與下游客製 Agent 能針對 DTO 欄位執行過濾、排序、分群運算，徹底告別純文字字串解析易破裂的窘境。
+                </p>
+              </div>
+
+              <div class="glass-card p-4 rounded-xl border-l-4 border-l-purple-500 space-y-1.5">
+                <div class="font-bold text-slate-100 text-xs flex items-center justify-between">
+                  <span class="flex items-center text-purple-400">
+                    <i class="fa-solid fa-shield-cat mr-2"></i> 3. 零執行期額外負擔 (Zero Runtime Overhead)
+                  </span>
+                  <span class="text-[10px] bg-purple-500/20 text-purple-300 px-1.5 py-0.5 rounded">Performance</span>
+                </div>
+                <p class="text-[11.5px] text-slate-300 leading-normal">
+                  Roslyn 分析器僅於編譯期與 IDE 運作，設定為不進入產出 Assembly，對正式環境執行效能與二進位體積零影響。
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- Footer Navigation Bar -->
+  <footer class="h-16 px-8 border-t border-slate-800 bg-slate-900/90 backdrop-blur flex items-center justify-between z-30">
+    <!-- Progress bar -->
+    <div class="flex items-center space-x-3 w-1/3">
+      <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+        <div id="progress-bar" class="bg-blue-500 h-full w-1/4 transition-all duration-300"></div>
+      </div>
+      <span class="text-xs text-slate-400 font-mono whitespace-nowrap" id="progress-text">25%</span>
+    </div>
+
+    <!-- Navigation Buttons -->
+    <div class="flex items-center space-x-3">
+      <button id="btn-prev" onclick="prevSlide()" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold flex items-center space-x-2 transition border border-slate-700 disabled:opacity-30 disabled:cursor-not-allowed">
+        <i class="fa-solid fa-chevron-left"></i>
+        <span>上一頁</span>
+      </button>
+
+      <button id="btn-next" onclick="nextSlide()" class="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold flex items-center space-x-2 transition shadow-lg shadow-blue-600/30 disabled:opacity-30 disabled:cursor-not-allowed">
+        <span>下一頁</span>
+        <i class="fa-solid fa-chevron-right"></i>
+      </button>
+    </div>
+
+    <!-- Slide Thumbnails / Jump Menu -->
+    <div class="flex items-center space-x-1.5 text-xs">
+      <button onclick="goToSlide(1)" class="slide-dot w-7 h-7 rounded-md font-mono text-slate-400 bg-slate-800/80 hover:bg-blue-500/20 hover:text-blue-400 border border-slate-700 flex items-center justify-center transition" title="1. 核心定位與願景">1</button>
+      <button onclick="goToSlide(2)" class="slide-dot w-7 h-7 rounded-md font-mono text-slate-400 bg-slate-800/80 hover:bg-blue-500/20 hover:text-blue-400 border border-slate-700 flex items-center justify-center transition" title="2. 現況痛點與業務損失">2</button>
+      <button onclick="goToSlide(3)" class="slide-dot w-7 h-7 rounded-md font-mono text-slate-400 bg-slate-800/80 hover:bg-blue-500/20 hover:text-blue-400 border border-slate-700 flex items-center justify-center transition" title="3. ADR-010 四大治理支柱">3</button>
+      <button onclick="goToSlide(4)" class="slide-dot w-7 h-7 rounded-md font-mono text-slate-400 bg-slate-800/80 hover:bg-blue-500/20 hover:text-blue-400 border border-slate-700 flex items-center justify-center transition" title="4. 鋪平道路與業務效益">4</button>
+      <button onclick="window.print()" class="ml-2 w-7 h-7 rounded-md text-slate-400 bg-slate-800 hover:text-white border border-slate-700 flex items-center justify-center transition" title="列印 / 另存 PDF">
+        <i class="fa-solid fa-print"></i>
+      </button>
+    </div>
+  </footer>
+
+  <!-- Interactive Slide Controller Script -->
+  <script>
+    let currentSlide = 1;
+    const totalSlides = 4;
+
+    const slideTitles = [
+      "1. 核心定位與願景 (Vision & Executive Summary)",
+      "2. 現況痛點與業務損失 (Problems & Business Impact)",
+      "3. 核心決策：四大治理支柱 (The 4 Pillars of Solution)",
+      "4. 鋪平道路與業務預期效益 (Paved Road Strategy & ROI)"
+    ];
+
+    function updateSlideUI() {
+      // Update Slide visibility
+      for (let i = 1; i <= totalSlides; i++) {
+        const slide = document.getElementById(`slide-${i}`);
+        if (slide) {
+          if (i === currentSlide) {
+            slide.classList.add('active');
+          } else {
+            slide.classList.remove('active');
+          }
+        }
+      }
+
+      // Update counters and titles
+      document.getElementById('slide-counter').textContent = `0${currentSlide} / 0${totalSlides}`;
+      document.getElementById('slide-title-indicator').textContent = slideTitles[currentSlide - 1];
+
+      // Update progress bar
+      const progressPercent = (currentSlide / totalSlides) * 100;
+      document.getElementById('progress-bar').style.width = `${progressPercent}%`;
+      document.getElementById('progress-text').textContent = `${Math.round(progressPercent)}%`;
+
+      // Update Prev / Next button states
+      document.getElementById('btn-prev').disabled = (currentSlide === 1);
+      document.getElementById('btn-next').disabled = (currentSlide === totalSlides);
+
+      // Update Dots
+      const dots = document.querySelectorAll('.slide-dot');
+      dots.forEach((dot, idx) => {
+        if (idx + 1 === currentSlide) {
+          dot.classList.add('bg-blue-600', 'text-white', 'border-blue-500');
+          dot.classList.remove('text-slate-400', 'bg-slate-800/80');
+        } else {
+          dot.classList.remove('bg-blue-600', 'text-white', 'border-blue-500');
+          dot.classList.add('text-slate-400', 'bg-slate-800/80');
+        }
+      });
+    }
+
+    function nextSlide() {
+      if (currentSlide < totalSlides) {
+        currentSlide++;
+        updateSlideUI();
+      }
+    }
+
+    function prevSlide() {
+      if (currentSlide > 1) {
+        currentSlide--;
+        updateSlideUI();
+      }
+    }
+
+    function goToSlide(slideNumber) {
+      if (slideNumber >= 1 && slideNumber <= totalSlides) {
+        currentSlide = slideNumber;
+        updateSlideUI();
+      }
+    }
+
+    // Keyboard Navigation
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
+        nextSlide();
+      } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+        prevSlide();
+      } else if (e.key === 'Home') {
+        goToSlide(1);
+      } else if (e.key === 'End') {
+        goToSlide(totalSlides);
+      }
+    });
+
+    // Initialize UI on load
+    document.addEventListener('DOMContentLoaded', () => {
+      updateSlideUI();
+    });
+  </script>
+</body>
+</html>

@@ -1,10 +1,14 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -12,261 +16,218 @@ using McpGateway.Core.Cache;
 using McpGateway.Core.Configuration;
 using McpGateway.Core.Tools;
 using McpGateway.Core.Validation;
-using StackExchange.Redis;
 
 namespace McpGateway.Core.Auth;
 
 /// <summary>
-/// API-KEY validation request model.
+/// Response model for UAC API identity endpoint.
 /// </summary>
-public class ApiKeyValidationRequest
+public class UacApiKeyIdentityResponse
 {
-    [JsonPropertyName("apiKey")]
-    public string ApiKey { get; set; } = string.Empty;
+    [JsonPropertyName("empId")]
+    public string? EmpId { get; set; }
+
+    [JsonPropertyName("name")]
+    public string? Name { get; set; }
 }
 
 /// <summary>
-/// API-KEY validation response model.
-/// </summary>
-public class ApiKeyValidationResponse
-{
-    [JsonPropertyName("userId")]
-    public string UserId { get; set; } = string.Empty;
-
-    [JsonPropertyName("department")]
-    public string Department { get; set; } = string.Empty;
-
-    [JsonPropertyName("role")]
-    public string Role { get; set; } = string.Empty;
-
-    [JsonPropertyName("agentId")]
-    public string AgentId { get; set; } = string.Empty;
-
-    [JsonPropertyName("success")]
-    public bool Success { get; set; }
-}
-
-/// <summary>
-/// Validates API-KEY tokens by calling the API-KEY validation service with graceful degradation.
+/// Validates API-KEY tokens against enterprise UAC API with multi-node failover and SHA-256 caching.
 /// </summary>
 public class ApiKeyValidator : IApiKeyValidator
 {
     private readonly HttpClient _httpClient;
+    private readonly IUacApiEndpointResolver _endpointResolver;
     private readonly ITokenCacheService _cacheService;
     private readonly ILogger<ApiKeyValidator> _logger;
+    private readonly McpGatewayOptions _gatewayOptions;
     private readonly AuthOptions _authOptions;
-    private readonly TokenCacheOptions _cacheOptions;
-    private bool _serviceFailureLogged = false;
+
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
 
     public ApiKeyValidator(
         HttpClient httpClient,
+        IUacApiEndpointResolver endpointResolver,
         ITokenCacheService cacheService,
-        ILogger<ApiKeyValidator> logger,
-        IOptions<McpGatewayOptions> options)
+        IOptions<McpGatewayOptions> options,
+        ILogger<ApiKeyValidator> logger)
     {
         _httpClient = httpClient;
+        _endpointResolver = endpointResolver;
         _cacheService = cacheService;
         _logger = logger;
+        _gatewayOptions = options.Value;
         _authOptions = options.Value.Auth ?? new AuthOptions();
-        _cacheOptions = options.Value.TokenCache ?? new TokenCacheOptions();
     }
 
-    /// <summary>
-    /// Validates an API-KEY with graceful degradation.
-    /// </summary>
-    /// <param name="apiKey">The API key to validate.</param>
-    /// <param name="correlationId">The correlation ID for logging.</param>
-    /// <returns>Tool context if validation succeeds, null if unauthorized, throws if service unavailable.</returns>
-    /// <exception cref="HttpRequestException">Thrown when validation service is unavailable and no cached data exists.</exception>
-        public async Task<ToolContext?> ValidateAsync(string apiKey, string correlationId)
+    /// <inheritdoc />
+    public async Task<ToolContext?> ValidateAsync(string apiKey, string correlationId)
     {
-        var tokenHash = GetTokenHash(apiKey);
-        
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return null;
+        }
+
+        var keyHash = ComputeSha256Hex(apiKey);
+        var cacheKey = $"apikey:{keyHash}";
+
+        // 1. Check cache
         try
         {
-            // First check cache
-            var contextFromCache = await _cacheService.GetAsync("API-KEY", apiKey);
-            if (contextFromCache != null)
-            {
-                _logger.LogDebug("CorrelationId: {CorrelationId} - API-KEY cache hit for token {TokenHash}", 
-                    correlationId, tokenHash);
-                return contextFromCache;
-            }
-
-            _logger.LogDebug("CorrelationId: {CorrelationId} - API-KEY cache miss for token {TokenHash}", 
-                correlationId, tokenHash);
-
-            // Call API-KEY validation service
-            var request = new ApiKeyValidationRequest { ApiKey = apiKey };
-            var requestBody = JsonSerializer.Serialize(request);
-            var content = new StringContent(requestBody, Encoding.UTF8, "application/json");
-
-            var timeoutSeconds = _authOptions.ApiKeyTimeoutSeconds > 0 
-                ? _authOptions.ApiKeyTimeoutSeconds 
-                : 3; // Default 3 seconds
-
-            _logger.LogDebug("CorrelationId: {CorrelationId} - Calling API-KEY validation service with {Timeout}s timeout", 
-                correlationId, timeoutSeconds);
-            
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
-            
-            var response = await _httpClient.PostAsync("validate", content, cts.Token);
-            
-            if (response.StatusCode == HttpStatusCode.Unauthorized)
-            {
-                _logger.LogWarning("CorrelationId: {CorrelationId} - API-KEY validation failed: unauthorized token", correlationId);
-                return null;
-            }
-
-            response.EnsureSuccessStatusCode();
-
-            var responseBody = await response.Content.ReadAsStringAsync();
-            var validationResult = JsonSerializer.Deserialize<ApiKeyValidationResponse>(responseBody);
-
-            if (validationResult == null || !validationResult.Success)
-            {
-                _logger.LogWarning("CorrelationId: {CorrelationId} - API-KEY validation failed: invalid response", correlationId);
-                return null;
-            }
-
-            // Create tool context
-            var toolContext = new ToolContext(
-                validationResult.UserId,
-                validationResult.Department,
-                validationResult.Role,
-                "API-KEY",
-                validationResult.AgentId,
-                correlationId
-            );
-
-            // Cache the result
-            var ttlMinutes = _cacheOptions.ApiKeyTtlMinutes > 0 
-                ? _cacheOptions.ApiKeyTtlMinutes 
-                : 5; // Default 5 minutes
-
-            await _cacheService.SetAsync("API-KEY", apiKey, toolContext, ttlMinutes);
-
-            _logger.LogInformation("CorrelationId: {CorrelationId} - API-KEY validation successful for user {UserId}", 
-                correlationId, toolContext.UserId);
-            
-            // Reset failure flag on successful validation
-            _serviceFailureLogged = false;
-            
-            return toolContext;
-        }
-        catch (TaskCanceledException ex) // Timeout
-        {
-            _logger.LogWarning(ex, "CorrelationId: {CorrelationId} - API-KEY validation service timeout for token {TokenHash}", 
-                correlationId, tokenHash);
-            
-            // Try cached data even if expired
-            var cachedContext = await TryGetCachedContextAsync("API-KEY", apiKey);
-            if (cachedContext != null)
-            {
-                _logger.LogWarning("CorrelationId: {CorrelationId} - Using cached API-KEY validation due to service timeout", 
-                    correlationId);
-                return cachedContext;
-            }
-            
-            _logger.LogError("CorrelationId: {CorrelationId} - API-KEY service timeout and no cached validation available", 
-                correlationId);
-            throw new HttpRequestException("API-KEY validation service timeout and cached data unavailable", ex, HttpStatusCode.ServiceUnavailable);
-        }
-        catch (HttpRequestException ex)
-        {
-            // Handle Redis connection failure
-            if (ex.InnerException is RedisConnectionException || ex.Message.Contains("Redis"))
-            {
-                _logger.LogWarning(ex, "CorrelationId: {CorrelationId} - Redis connection failed during API-KEY validation", 
-                    correlationId);
-                
-                // Try cached data
-                var cachedValidationResult = await TryGetCachedContextAsync("API-KEY", apiKey);
-                if (cachedValidationResult != null)
-                {
-                    _logger.LogWarning("CorrelationId: {CorrelationId} - Using cached API-KEY validation due to Redis failure", 
-                        correlationId);
-                    return cachedValidationResult;
-                }
-                
-                _logger.LogError("CorrelationId: {CorrelationId} - Redis failure and no cached validation available", 
-                    correlationId);
-                throw new HttpRequestException("Authentication service temporarily unavailable due to cache failure", ex, HttpStatusCode.ServiceUnavailable);
-            }
-            
-            // Handle other HTTP errors
-            if (!_serviceFailureLogged)
-            {
-                _logger.LogWarning(ex, "CorrelationId: {CorrelationId} - API-KEY validation service error, attempting cache fallback", 
-                    correlationId);
-                _serviceFailureLogged = true;
-            }
-            
-            // Try cached data
-            var cachedContext = await TryGetCachedContextAsync("API-KEY", apiKey);
-            if (cachedContext != null)
-            {
-                _logger.LogWarning("CorrelationId: {CorrelationId} - Using cached API-KEY validation due to service failure", 
-                    correlationId);
-                return cachedContext;
-            }
-            
-            _logger.LogError("CorrelationId: {CorrelationId} - API-KEY validation service error and no cached data available", 
-                correlationId);
-            throw new HttpRequestException("API-KEY validation service temporarily unavailable", ex, HttpStatusCode.ServiceUnavailable);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "CorrelationId: {CorrelationId} - Unexpected error during API-KEY validation", correlationId);
-            
-            // Last resort - try any cached data
-            var cachedContext = await TryGetCachedContextAsync("API-KEY", apiKey);
-            if (cachedContext != null)
-            {
-                _logger.LogWarning("CorrelationId: {CorrelationId} - Using cached API-KEY validation due to unexpected error", 
-                    correlationId);
-                return cachedContext;
-            }
-            
-            throw new HttpRequestException("Authentication service error", ex, HttpStatusCode.ServiceUnavailable);
-        }
-    }
-
-    /// <summary>
-    /// Attempts to retrieve cached context even if expired.
-    /// </summary>
-    private async Task<ToolContext?> TryGetCachedContextAsync(string tokenType, string token)
-    {
-        try
-        {
-            // First try normal cache lookup
-            var cached = await _cacheService.GetAsync(tokenType, token);
+            var cached = await _cacheService.GetAsync("API-KEY", cacheKey);
             if (cached != null)
             {
+                _logger.LogDebug("CorrelationId: {CorrelationId} - API-KEY cache hit for {HashPrefix}...", correlationId, keyHash[..Math.Min(8, keyHash.Length)]);
                 return cached;
             }
-            
-            return null;
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to retrieve cached validation result during degradation");
-            return null;
+            _logger.LogWarning(ex, "CorrelationId: {CorrelationId} - Error accessing token cache, continuing with direct validation", correlationId);
         }
+
+        // 2. Resolve UAC API endpoints
+        var endpoints = await _endpointResolver.ResolveEndpointsAsync();
+        if (endpoints == null || endpoints.Count == 0)
+        {
+            _logger.LogError("CorrelationId: {CorrelationId} - No UAC API endpoints available for validation", correlationId);
+            throw new HttpRequestException("No UAC API endpoints available for validation", null, HttpStatusCode.ServiceUnavailable);
+        }
+
+        var systemName = !string.IsNullOrWhiteSpace(_authOptions.SystemName)
+            ? _authOptions.SystemName
+            : _gatewayOptions.Department;
+
+        var timeoutSeconds = _authOptions.ApiKeyTimeoutSeconds > 0
+            ? _authOptions.ApiKeyTimeoutSeconds
+            : 3;
+
+        // 3. Try each endpoint with failover
+        foreach (var endpoint in endpoints)
+        {
+            var baseUrl = endpoint.TrimEnd('/');
+            var requestUrl = $"{baseUrl}/api-keys/identity?system={Uri.EscapeDataString(systemName ?? string.Empty)}";
+
+            try
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Get, requestUrl);
+                request.Headers.Add("X-Api-Key", apiKey);
+                if (!string.IsNullOrWhiteSpace(correlationId))
+                {
+                    request.Headers.Add("X-Correlation-ID", correlationId);
+                }
+
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
+                var response = await _httpClient.SendAsync(request, cts.Token);
+
+                // 401/403: Explicitly unauthorized, immediately return null without retrying other nodes
+                if (response.StatusCode == HttpStatusCode.Unauthorized || response.StatusCode == HttpStatusCode.Forbidden)
+                {
+                    _logger.LogWarning("CorrelationId: {CorrelationId} - UAC API rejected API-KEY at {Endpoint} (Status: {StatusCode})", correlationId, baseUrl, response.StatusCode);
+                    return null;
+                }
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var identity = await response.Content.ReadFromJsonAsync<UacApiKeyIdentityResponse>(JsonOptions, cts.Token);
+                    if (identity != null && !string.IsNullOrWhiteSpace(identity.EmpId))
+                    {
+                        var toolContext = new ToolContext(
+                            identity.EmpId,
+                            _gatewayOptions.Department ?? "unknown",
+                            identity.Name ?? identity.EmpId,
+                            "API-KEY",
+                            string.Empty,
+                            correlationId
+                        );
+
+                        var ttlMinutes = _authOptions.CacheTtlMinutes > 0 ? _authOptions.CacheTtlMinutes : 30;
+                        try
+                        {
+                            await _cacheService.SetAsync("API-KEY", cacheKey, toolContext, ttlMinutes);
+                        }
+                        catch (Exception cacheEx)
+                        {
+                            _logger.LogWarning(cacheEx, "Failed to cache validated API-KEY tool context");
+                        }
+
+                        _logger.LogInformation("CorrelationId: {CorrelationId} - API-KEY validation successful for user {UserId} ({UserName})", correlationId, toolContext.UserId, toolContext.Role);
+                        return toolContext;
+                    }
+                }
+
+                _logger.LogWarning("CorrelationId: {CorrelationId} - UAC API node {Endpoint} returned status {StatusCode}, attempting failover...", correlationId, baseUrl, response.StatusCode);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "CorrelationId: {CorrelationId} - Error calling UAC API node {Endpoint}, attempting failover...", correlationId, baseUrl);
+            }
+        }
+
+        _logger.LogError("CorrelationId: {CorrelationId} - All UAC API endpoints failed to validate API-KEY", correlationId);
+        throw new HttpRequestException("All UAC API endpoints failed during validation", null, HttpStatusCode.ServiceUnavailable);
     }
 
-    private string GetTokenHash(string token)
+    /// <inheritdoc />
+    public async Task<bool> ValidateSystemRegisteredAsync(CancellationToken cancellationToken = default)
     {
-        try
+        var systemName = !string.IsNullOrWhiteSpace(_authOptions.SystemName)
+            ? _authOptions.SystemName
+            : _gatewayOptions.Department;
+
+        if (string.IsNullOrWhiteSpace(systemName))
         {
-            using var sha256 = SHA256.Create();
-            var hash = sha256.ComputeHash(Encoding.UTF8.GetBytes(token));
-            return Convert.ToBase64String(hash)[..10];
+            _logger.LogWarning("No SystemName configured for UAC system validation");
+            return false;
         }
-        catch (Exception ex)
+
+        var endpoints = await _endpointResolver.ResolveEndpointsAsync(cancellationToken);
+        if (endpoints == null || endpoints.Count == 0)
         {
-            _logger.LogWarning(ex, "Failed to compute token hash");
-            return "unknown";
+            _logger.LogWarning("No UAC API endpoints available to validate system registration");
+            return false;
         }
+
+        foreach (var endpoint in endpoints)
+        {
+            var baseUrl = endpoint.TrimEnd('/');
+            var requestUrl = $"{baseUrl}/api-keys/systems";
+
+            try
+            {
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                cts.CancelAfter(TimeSpan.FromSeconds(3));
+
+                var response = await _httpClient.GetAsync(requestUrl, cts.Token);
+                if (response.IsSuccessStatusCode)
+                {
+                    var systems = await response.Content.ReadFromJsonAsync<List<string>>(JsonOptions, cts.Token);
+                    if (systems != null && systems.Contains(systemName, StringComparer.OrdinalIgnoreCase))
+                    {
+                        _logger.LogInformation("System '{SystemName}' is successfully verified in UAC API system list", systemName);
+                        return true;
+                    }
+
+                    _logger.LogError("System '{SystemName}' is NOT registered in UAC API systems: [{Systems}]", systemName, string.Join(", ", systems ?? new List<string>()));
+                    return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to query systems from UAC API node {Endpoint}", baseUrl);
+            }
+        }
+
+        _logger.LogWarning("All UAC API nodes failed when checking system registration for '{SystemName}'", systemName);
+        return false;
+    }
+
+    private static string ComputeSha256Hex(string input)
+    {
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(input));
+        return Convert.ToHexString(bytes).ToLowerInvariant();
     }
 }

@@ -67,14 +67,13 @@ public static class McpGatewayHostExtensions
         // Register individual health checks
         services.AddTransient<RedisHealthCheck>();
         services.AddTransient<JwksHealthCheck>();
+        services.AddTransient<UacApiHealthCheck>();
         services.AddTransient<GatewayReadinessHealthCheck>();
         
         // Register health checks with tags
         services.AddHealthChecks()
             .AddCheck<GatewayHealthChecks>("gateway_live", tags: new[] { "live" })
             .AddCheck<GatewayReadinessHealthCheck>("gateway_ready", tags: new[] { "ready" });
-
-
 
         // Register Redis for token cache with circuit breaker and degradation
         var tokenCache = services.BuildServiceProvider().GetRequiredService<IOptions<McpGatewayOptions>>().Value.TokenCache;
@@ -132,17 +131,11 @@ public static class McpGatewayHostExtensions
             });
         }
 
-        // Register authentication services
-        services.AddHttpClient<IApiKeyValidator, ApiKeyValidator>((sp, client) =>
-        {
-            var options = sp.GetRequiredService<IOptions<McpGatewayOptions>>().Value;
-            var authOptions = options.Auth ?? new AuthOptions();
-            
-            if (!string.IsNullOrEmpty(authOptions.ApiKeyServiceUrl))
-            {
-                client.BaseAddress = new Uri(authOptions.ApiKeyServiceUrl);
-            }
-        });
+        // Register authentication and dynamic resolver services
+        services.AddHttpClient<IUacApiEndpointResolver, UacApiEndpointResolver>();
+        services.AddHttpClient<IApiKeyValidator, ApiKeyValidator>();
+        services.AddHttpClient<UacApiHealthCheck>();
+        services.AddTransient<IAsyncStartupValidator, UacSystemStartupValidator>();
         services.AddSingleton<AuthenticationProxy>();
 
         // Register downstream client
@@ -232,6 +225,24 @@ public static class McpGatewayHostExtensions
         
         logger.LogInformation("MCP Gateway configuration: Department={Department}, RoutePrefix={RoutePrefix}, EnableHealthChecks={EnableHealthChecks}", 
             options.Department, options.RoutePrefix, options.EnableHealthChecks);
+
+        // Execute async startup validators
+        var asyncValidators = app.Services.GetServices<IAsyncStartupValidator>();
+        var allErrors = new List<ValidationError>();
+        foreach (var validator in asyncValidators)
+        {
+            var errors = await validator.ValidateAsync();
+            if (errors != null && errors.Count > 0)
+            {
+                allErrors.AddRange(errors);
+            }
+        }
+
+        if (allErrors.Count > 0)
+        {
+            logger.LogError("Gateway startup validation failed with {Count} errors", allErrors.Count);
+            throw new StartupValidationException(allErrors);
+        }
 
         // Initialize Metrics
         var metrics = app.Services.GetRequiredService<MetricsService>();

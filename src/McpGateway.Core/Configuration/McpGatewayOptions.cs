@@ -43,6 +43,22 @@ public class McpGatewayOptions
     /// Gets or sets audit configuration options.
     /// </summary>
     public AuditOptions? Audit { get; set; }
+
+    /// <summary>
+    /// Gets or sets Consul configuration options.
+    /// </summary>
+    public ConsulOptions? Consul { get; set; }
+}
+
+/// <summary>
+/// Consul configuration options.
+/// </summary>
+public class ConsulOptions
+{
+    /// <summary>
+    /// Gets or sets the Consul cluster URLs.
+    /// </summary>
+    public List<string> Urls { get; set; } = new();
 }
 
 /// <summary>
@@ -90,12 +106,37 @@ public class AuthOptions
     /// <summary>
     /// Gets or sets the authentication provider.
     /// </summary>
-    public string? Provider { get; set; }
+    public string? Provider { get; set; } = "API-KEY";
     
     /// <summary>
     /// Gets or sets whether authentication is enabled.
     /// </summary>
     public bool Enabled { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets the registered system name in UAC API.
+    /// </summary>
+    public string? SystemName { get; set; }
+
+    /// <summary>
+    /// Gets or sets the Consul K/V key for API URLs.
+    /// </summary>
+    public string ConsulKey { get; set; } = "ApiUrls.ProductionOa";
+
+    /// <summary>
+    /// Gets or sets the Consul URLs for dynamic endpoint discovery.
+    /// </summary>
+    public List<string> ConsulUrls { get; set; } = new();
+
+    /// <summary>
+    /// Gets or sets fallback UAC API URLs if Consul discovery is unavailable.
+    /// </summary>
+    public List<string> FallbackUacApiUrls { get; set; } = new();
+
+    /// <summary>
+    /// Gets or sets the API-KEY token cache TTL in minutes (default: 30).
+    /// </summary>
+    public int CacheTtlMinutes { get; set; } = 30;
     
     /// <summary>
     /// Gets or sets the JWKS endpoint URL.

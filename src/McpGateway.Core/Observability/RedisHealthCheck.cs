@@ -28,10 +28,10 @@ public class RedisHealthCheck : IHealthCheck
     {
         try
         {
-            // If no Redis connection, fail fast
+            // If no Redis connection configured, pass as healthy (using in-memory cache)
             if (_redisConnection == null)
             {
-                return HealthCheckResult.Unhealthy("Redis connection not configured");
+                return HealthCheckResult.Healthy("Redis not configured (in-memory cache used)");
             }
 
             // Check if connection is active

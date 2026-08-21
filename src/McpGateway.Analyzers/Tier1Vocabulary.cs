@@ -26,35 +26,30 @@ internal static class Tier1Vocabulary
     {
         // 實體識別碼
         new GlossaryEntry("productId", "ProductId", "產品料號或唯一代碼 (Product ID)", new[] { "productCode", "prodId", "itemNo", "partNo", "materialNo", "PROD_ID" }),
-        new GlossaryEntry("productName", "ProductName", "產品品名或規格名稱", new[] { "prodName", "itemDesc", "materialName", "PROD_NAME" }),
+        new GlossaryEntry("productName", "ProductName", "產品品名或規格名稱", new[] { "prodName", "itemDesc", "PROD_DESC", "PROD_NAME" }),
         new GlossaryEntry("eqptId", "EqptId", "主設備/機台識別碼 (Equipment ID)", new[] { "equipmentId", "machineId", "toolId", "machNo", "eqpId", "EQP_ID" }),
-        new GlossaryEntry("subEqptId", "SubEqptId", "子設備/單元/腔體機台 ID", new[] { "subEquipmentId", "subMachineId", "unitId", "subToolId" }),
-        new GlossaryEntry("chamberId", "ChamberId", "機台腔體/處理槽代碼", new[] { "chId", "chamberNo", "slotId" }),
-        new GlossaryEntry("portId", "PortId", "裝卸埠/傳載埠代碼", new[] { "loadPortId", "portNo", "lpId" }),
-        new GlossaryEntry("workCenter", "WorkCenter", "生產工作中心/工作站代碼", new[] { "wc", "workCenterCode", "stationGroup" }),
-        new GlossaryEntry("productLine", "ProductLine", "生產線別代碼", new[] { "line", "productionLine", "lineNo", "lineId" }),
-        new GlossaryEntry("stepId", "StepId", "製程站點/工序代碼", new[] { "stageId", "operationId", "processId", "operId", "STEP_ID" }),
-        new GlossaryEntry("stepName", "StepName", "製程站點/工序名稱", new[] { "operationName", "processName", "stageName" }),
+        new GlossaryEntry("subEqptId", "SubEqptId", "子設備/Unit/Chamber機台 ID", new[] { "subEquipmentId", "subMachineId", "unitId", "subToolId" }),
+        new GlossaryEntry("chamberId", "ChamberId", "子機台/Chamber", new[] { "chId", "chamberNo", "slotId" }),
+        new GlossaryEntry("portId", "PortId", "裝卸埠/傳載埠代碼", new[] { "port_id", "portNo", "lpId" }),
         new GlossaryEntry("recipeId", "RecipeId", "設備配方/製程程式代碼", new[] { "recipeName", "ppId", "recipeCode" }),
         new GlossaryEntry("lotId", "LotId", "生產批號", new[] { "lotNo", "batchId", "batchNo", "LOT_ID" }),
         new GlossaryEntry("workOrderId", "WorkOrderId", "工單編號", new[] { "wo", "woId", "moId", "orderNo", "shopOrder", "WO_ID" }),
-        new GlossaryEntry("carrierId", "CarrierId", "載具/晶舟/卡匣編號", new[] { "foupId", "cassetteId", "cstId", "carrierNo" }),
+        new GlossaryEntry("carrierId", "CarrierId", "載具/晶舟/卡匣編號/CST ID/cassette ID", new[] { "foupId", "cassetteId", "cstId", "carrierNo" }),
         new GlossaryEntry("glassId", "GlassId", "面板玻璃基板 ID", new[] { "sheetId", "substrateId", "panelGlassId", "GLASS_ID" }),
         new GlossaryEntry("panelId", "PanelId", "切割後面板/合板 ID", new[] { "pnlId", "subPanelId", "unitPanelId", "PANEL_ID" }),
-        new GlossaryEntry("waferId", "WaferId", "晶圓片 ID", new[] { "waferNo", "dieId", "WAFER_ID" }),
-
+        new GlossaryEntry("processId", "ProcessId", "製程代碼/工藝代碼", new[] { "procId", "processCode", "processName" }),
+        new GlossaryEntry("ownerId", "OwnerId", "批貨擁有者類別 (Owner ID)", new[] { "ownerType", "ownerCode" }),
+        new GlossaryEntry("ecCode", "EcCode", "產品版本/工程變更代碼 (Engineering Change Code)", new[] { "engineeringChangeCode", "ecNo" }),
+        new GlossaryEntry("lotCnt", "LotCnt", "LOT 數量 (Lot Count)", new[] { "lotCount", "batchCount" }),
+        new GlossaryEntry("sheetCnt", "SheetCnt", "玻璃數量 (Sheet Count)", new[] { "sheetCount", "substrateCount" }),
+        new GlossaryEntry("panelCnt", "PanelCnt", "Panel 數量 (Panel Count)", new[] { "panelCount", "unitPanelCount" }),
+        new GlossaryEntry("stayHours", "StayHours", "當站停留時間 (Stay Duration in Hours)", new[] { "stayTime", "dwellTime", "stationStayHours" }),
+        new GlossaryEntry("startHours", "StartHours", "下線時間 (Start Duration in Hours)", new[] { "startTime", "downTime", "startDurationHours" }),
+        
+        
         // 生產計量與指標
-        new GlossaryEntry("quantityInProcess", "QuantityInProcess", "目前在製中數量（尚未完工）", new[] { "wipQty", "inProcessQty", "qtyInProcess" }),
-        new GlossaryEntry("quantityCompleted", "QuantityCompleted", "該工單/項目已完工入庫數量", new[] { "completedQty", "doneQty", "finishQty" }),
-        new GlossaryEntry("totalItems", "TotalItems", "符合查詢條件的項目總筆數", new[] { "totalCount", "itemCount", "total" }),
-        new GlossaryEntry("yieldRate", "YieldRate", "生產/檢驗良率（範圍 0.0 ~ 1.0）", new[] { "yield", "yieldRatio", "passRate" }),
-        new GlossaryEntry("defectCount", "DefectCount", "缺陷/不良品數量", new[] { "ngQty", "scrapQty", "failCount" }),
 
         // 狀態與時間戳記
-        new GlossaryEntry("status", "Status", "目前狀態代碼或說明", new[] { "state", "statusCode" }),
-        new GlossaryEntry("priority", "Priority", "生產優先等級", new[] { "priorityCode", "priLevel" }),
-        new GlossaryEntry("scheduledCompletion", "ScheduledCompletion", "預計完工日期時間", new[] { "estimatedCompletion", "targetDate", "dueTime" }),
-        new GlossaryEntry("generatedAt", "GeneratedAt", "報告/資料產出之 UTC 時間戳記", new[] { "createTime", "reportTime", "generatedTime" })
     };
 
     public static GlossaryEntry? FindByAlias(string name)
