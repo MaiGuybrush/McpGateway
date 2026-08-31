@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>McpGateway.__Department__</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="McpGateway.Core" Version="__CoreVersion__" />
+    <PackageReference Include="McpGateway.Analyzers" Version="__CoreVersion__" PrivateAssets="all" />
+    <PackageReference Include="Consul" Version="1.6.10.9" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AdditionalFiles Include="mcp-glossary.json" Condition="Exists('mcp-glossary.json')" />
+  </ItemGroup>
+
+</Project>

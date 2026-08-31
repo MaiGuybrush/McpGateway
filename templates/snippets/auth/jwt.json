@@ -1,0 +1,6 @@
+    "Auth": {
+      "Provider": "JWT",
+      "Enabled": true,
+      "JwksEndpoint": "http://identity.corp.local/.well-known/jwks.json",
+      "JwksCacheHours": 24
+    }

@@ -1,0 +1,40 @@
+## Build and output
+bin/
+obj/
+artifacts/
+out/
+
+## Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+## Visual Studio Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+## Logs and temporary files
+*.log
+logs/
+temp/
+tmp/
+
+## OS generated
+.DS_Store
+Thumbs.db
+ehthumbs.db
+
+## Test results
+TestResults/
+coverage/
+*.trx
+
+## Environment / Local configuration
+appsettings.*.local.json
+!appsettings.Development.json
+!__department__-endpoints*.yaml

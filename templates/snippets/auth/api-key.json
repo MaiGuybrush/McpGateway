@@ -1,0 +1,11 @@
+    "Auth": {
+      "Provider": "API-KEY",
+      "Enabled": true,
+      "SystemName": "mcp-__department__",
+      "ConsulKey": "ApiUrls.ProductionOa",
+      "FallbackUacApiUrls": [
+        "http://hp08239p.cminl.oa/uacapitest"
+      ],
+      "ApiKeyTimeoutSeconds": 3,
+      "CacheTtlMinutes": 30
+    }

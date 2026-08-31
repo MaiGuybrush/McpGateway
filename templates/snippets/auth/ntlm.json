@@ -1,0 +1,4 @@
+    "Auth": {
+      "Provider": "NTLM",
+      "Enabled": true
+    }
