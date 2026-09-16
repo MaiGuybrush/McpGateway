@@ -422,3 +422,4 @@ Thumbs.db
 # Others
 *.cache
 *.bak
+.claude/
