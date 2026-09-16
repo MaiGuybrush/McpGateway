@@ -13,6 +13,7 @@ using McpGateway.Core.Configuration;
 using McpGateway.Core.Downstream;
 using McpGateway.Core.Auth;
 using McpGateway.Core.Observability;
+using McpGateway.Core.Subsystems;
 using McpGateway.Core.Tools;
 using McpGateway.Core.Validation;
 using StackExchange.Redis;
@@ -150,12 +151,38 @@ public static class McpGatewayHostExtensions
             }
         });
 
+        // Register Subsystem registry
+        McpSubsystemServiceCollectionExtensions.GetOrAddSubsystemRegistry(services);
+
         // Register MCP services
         services.AddMcpServer(options =>
         {
             // Minimal configuration for gateway
         })
-        .WithHttpTransport(httpOptions => httpOptions.Stateless = true);
+        .WithHttpTransport(httpOptions =>
+        {
+            httpOptions.Stateless = true;
+
+            var existingCallback = httpOptions.ConfigureSessionOptions;
+            httpOptions.ConfigureSessionOptions = async (httpContext, mcpOptions, cancellationToken) =>
+            {
+                if (existingCallback != null)
+                {
+                    await existingCallback(httpContext, mcpOptions, cancellationToken);
+                }
+
+                var options = httpContext.RequestServices.GetService<IOptions<McpGatewayOptions>>()?.Value;
+                var subsystem = SubsystemRouteParser.ExtractSubsystem(httpContext, options?.Department);
+                if (!string.IsNullOrEmpty(subsystem))
+                {
+                    var registry = httpContext.RequestServices.GetService<IMcpSubsystemRegistry>();
+                    if (registry != null && mcpOptions.ToolCollection != null)
+                    {
+                        mcpOptions.ToolCollection = registry.FilterToolsForSubsystem(subsystem, mcpOptions.ToolCollection);
+                    }
+                }
+            };
+        });
 
         // Register Metrics service
         services.AddSingleton<MetricsService>(sp =>
@@ -207,6 +234,15 @@ public static class McpGatewayHostExtensions
         // Map MCP endpoint
         logger.LogInformation("Mapping MCP endpoint at {RoutePrefix}", options.RoutePrefix);
         app.MapMcp(options.RoutePrefix);
+
+        // Map Subsystem MCP endpoint: /{department}/{system}/mcp
+        var dept = !string.IsNullOrEmpty(options.Department) ? options.Department.ToLowerInvariant() : "{department}";
+        var subsystemPath = $"/{dept}/{{system}}/mcp";
+        if (!options.RoutePrefix.Equals(subsystemPath, StringComparison.OrdinalIgnoreCase))
+        {
+            logger.LogInformation("Mapping subsystem MCP endpoint at {SubsystemPath}", subsystemPath);
+            app.MapMcp(subsystemPath);
+        }
 
         return app;
     }

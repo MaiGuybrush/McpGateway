@@ -26,6 +26,7 @@
 - [[Grilling] 規劃增量式子系統 Scaffold 指令與目錄結構規範](003-grilling-scaffold-cli-and-project-tree.md) — 提供獨立腳本 `templates/add-module.ps1`，採 `src/McpGateway.<Dept>.Host` + `src/McpGateway.<Dept>.<System>` 結構，並於執行時自動加入 `.sln`、專案參考與 `Program.cs` 錨點註冊。
 - [[Task] 撰寫 ADR-014：部門內多系統模組化與端點分流標準草案](004-task-draft-adr-014.md) — 完成 [ADR-014: 部門內部多系統模組化與端點分流架構](../architecture/adr/ADR-014-intra-department-subsystem-modules.md)，確立 Monorepo、請求級別動態過濾、三段式命名與增量腳手架之正式規範。
 - [[Task] 擴充 McpGateway.Analyzers 增加子系統工具三段式命名規則 (MCP003)](005-task-roslyn-subsystem-naming-rule.md) — 實作 Roslyn 診斷規則 MCP003 與 CodeFixProvider，強制檢核子系統 MCP Tool 之 {department}_{system}_{action} 三段式命名格式與前綴對齊，並完成 10 項單元與整合測試。
+- [[Task] 在 McpGateway.Core 實作模組分流中介層 (IMcpSubsystemRegistry)](006-task-implement-core-subsystem-registry.md) — 實作 IMcpSubsystemRegistry 與 AddMcpSubsystem Fluent API，於 ConfigureSessionOptions 掛接路徑正則解析與請求級 ToolCollection 動態白名單過濾，達成 100% 協議層子系統工具隔離，附帶 22 項單元與整合測試。
 
 ## Not yet specified
 
