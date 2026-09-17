@@ -27,6 +27,8 @@
 - [[Task] 撰寫 ADR-014：部門內多系統模組化與端點分流標準草案](004-task-draft-adr-014.md) — 完成 [ADR-014: 部門內部多系統模組化與端點分流架構](../architecture/adr/ADR-014-intra-department-subsystem-modules.md)，確立 Monorepo、請求級別動態過濾、三段式命名與增量腳手架之正式規範。
 - [[Task] 擴充 McpGateway.Analyzers 增加子系統工具三段式命名規則 (MCP003)](005-task-roslyn-subsystem-naming-rule.md) — 實作 Roslyn 診斷規則 MCP003 與 CodeFixProvider，強制檢核子系統 MCP Tool 之 {department}_{system}_{action} 三段式命名格式與前綴對齊，並完成 10 項單元與整合測試。
 - [[Task] 在 McpGateway.Core 實作模組分流中介層 (IMcpSubsystemRegistry)](006-task-implement-core-subsystem-registry.md) — 實作 IMcpSubsystemRegistry 與 AddMcpSubsystem Fluent API，於 ConfigureSessionOptions 掛接路徑正則解析與請求級 ToolCollection 動態白名單過濾，達成 100% 協議層子系統工具隔離，附帶 22 項單元與整合測試。
+- [[Task] 重構 templates/ 範本樹為 Modular Monorepo 結構](007-task-refactor-template-tree-for-monorepo.md) — 依據 ADR-014 重構模板樹為 `template-host/`（薄宿主 + 錨點 + 分層組態）與 `template-module/`（子系統模組 + 三段式命名 + AddSubsystem 擴充），並升級 `scaffold.ps1` 預設產出 Monorepo 方案與 Host。
+- [[Task] 實作 templates/add-module.ps1 增量腳本與 Auto-wiring](008-task-implement-add-module-script.md) — 實作 `add-module.ps1` 增量子系統產生器，支援參數校驗、三段式命名轉換、子系統 Class Library 產生，並透過 `dotnet sln add`、`dotnet add reference`、`Program.cs` 錨點注入與 `appsettings.json` 自動完成端到端裝配。
 
 ## Not yet specified
 

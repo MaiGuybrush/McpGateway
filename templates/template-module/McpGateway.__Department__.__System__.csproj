@@ -1,17 +1,17 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <RootNamespace>McpGateway.__Department__</RootNamespace>
+    <RootNamespace>McpGateway.__Department__.__System__</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="McpGateway.Core" Version="__CoreVersion__" />
     <PackageReference Include="McpGateway.Analyzers" Version="__CoreVersion__" PrivateAssets="all" />
-    <PackageReference Include="Consul" Version="1.6.10.9" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="9.0.0" />
   </ItemGroup>
 
   <ItemGroup>
