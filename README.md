@@ -5,36 +5,48 @@
 [![Plan](https://img.shields.io/badge/Plan-Development%20Plan-blue)](./docs/specs/development-plan.md)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-`McpGateway.Core` is the foundational .NET 9.0 library for building enterprise Model Context Protocol (MCP) gateways. It transforms internal REST APIs into LLM-friendly MCP tools with built-in authentication, audit logging, PII redaction, and metrics observability.
+`McpGateway.Core` 是建構企業級 Model Context Protocol (MCP) 閘道器的核心 .NET 9.0 基礎函式庫。它能將企業內部 REST APIs、微服務與資料庫轉化為對大型語言模型 (LLM) 友善的 MCP 工具契約，內建健全的跨廠認證容錯降級、稽核日誌、敏感個資 (PII) 遮罩脫敏、指標監控與編譯期分析器治理。
 
 ---
 
 ## 🎯 Purpose & Architecture
 
-`McpGateway.Core` is designed according to **[ADR-009](./docs/architecture/adr/ADR-009-department-gateway-split.md)** (per-department gateway topology).
+本專案架構奠基於 **[ADR-009](./docs/architecture/adr/ADR-009-department-gateway-split.md)**（部門獨立閘道器拆分原則）與 **[ADR-014](./docs/architecture/adr/ADR-014-intra-department-subsystem-modules.md)**（部門內部多子系統模組化與端點隔離規範）。
+
+### 拓撲架構圖 (Multi-Department & Subsystem Topology)
 
 ```
- Agent (/report)   Agent (/spc)   Agent (/qc)
-        └───────────────┼───────────────┘
-                        │ MCP (Streamable HTTP)
-                        ▼
-             Ingress — mcp.corp.local
-        ┌───────────────┼───────────────┐
-   /report            /spc            /qc
-        ▼               ▼               ▼
-  McpGateway.Report  McpGateway.Spc  McpGateway.Qc    ← Independent Department Repos
-   └─ .Core          └─ .Core        └─ .Core         ← Shared Core Library
-        └───────────────┼───────────────┘
-                        ▼
-                 Ocelot Gateway
-              ┌─────────┴─────────┐
-        Java Spring Boot      C#/.NET services
+ Agent (/fab2/mcp)         Agent (/fab2/mes/mcp)       Agent (/fab2/edc/mcp)
+        │                           │                           │
+        └───────────────────────────┼───────────────────────────┘
+                                    │ Streamable HTTP
+                                    ▼
+                         Ingress — mcp.corp.local
+                     ┌──────────────┴──────────────┐
+              /fab2/*                             /spc/*
+                     ▼                                   ▼
+          McpGateway.Fab2 (Monorepo)              McpGateway.Spc
+          ├── Host (Thin Web App)                 └── ...
+          │     ├─ /fab2/mcp      (部門 Ingress 端點)
+          │     ├─ /fab2/mes/mcp  (MES 工具隔離端點)
+          │     └─ /fab2/edc/mcp  (EDC 工具隔離端點)
+          ├── Subsystem: MES Module (Class Library)
+          └── Subsystem: EDC Module (Class Library)
+                     │
+         [ IMcpSubsystemRegistry ]  ← 依端點動態白名單過濾工具
+                     ▼
+          Ocelot Gateway / Consul
+          ┌──────────┴──────────┐
+    Java Spring Boot      C#/.NET Services
 ```
 
-### Why a Shared Core Library?
-1. **Consistency**: Authentication (JWT, API Key, NTLM), token caching, PII redaction, and audit logging are implemented **once** in Core.
-2. **Autonomous Deployment**: Departments depend on `McpGateway.Core` as a NuGet package and maintain their own repos & deployment lifecycles.
-3. **Low Onboarding Overhead**: Department gateways require minimal boilerplate in `Program.cs`.
+### 核心設計理念
+1. **部門級 Modular Monorepo**：依循 ADR-014，每個製造或業務部門維持單一獨立 Git 儲存庫，內部拆分為薄宿主 (`Host`) 與多個獨立子系統類別庫 (`Subsystem Modules`)。
+2. **端點分流與工具隔離 (Endpoint Routing & Tool Isolation)**：
+   - **部門 Ingress 端點 (`/{dept}/mcp`)**：對外彙整曝露該部門底下所有註冊之工具。
+   - **子系統專屬端點 (`/{dept}/{system}/mcp`)**：透過 `IMcpSubsystemRegistry` 提供白名單過濾，不同業務系統僅能查詢並調用自身子系統所擁有的工具，防止跨系統工具混淆與權限穿透。
+3. **零反射與 AOT 友善 (Zero-Reflection)**：全系統採用強型別註冊擴充方法 (`Add<System>Subsystem()`)，移除 Assembly 反射掃描，確保 Native AOT 相容性與啟動效能。
+4. **編譯期命名治理 (MCP003 Analyzer)**：內建 Roslyn 分析器，強制子系統工具採用三段式命名規範 `{department}_{system}_{action}`，杜絕名稱衝突。
 
 ---
 
@@ -43,118 +55,140 @@
 ```
 McpGateway.Core/
 ├── src/
-│   ├── McpGateway.Core/                 # Core NuGet package source (.NET 9.0)
-│   │   ├── Auth/                        # Auth degradation, JWT/API-Key/NTLM proxies
-│   │   ├── Cache/                       # Memory & Redis cache abstractions
-│   │   ├── Configuration/               # Option validators & department contracts
-│   │   ├── Downstream/                  # Ocelot HTTP client & resilience
-│   │   ├── Hosting/                     # AddMcpGateway / RunMcpGatewayAsync
-│   │   ├── Observability/               # Prometheus metrics & health checks
-│   │   ├── Tools/                       # ToolBase & tool registry infrastructure
-│   │   └── Validation/                  # Startup validation
-│   └── MockOcelotApi/                   # Mock downstream API server for testing
+│   ├── McpGateway.Core/                 # Core 核心 NuGet 套件原始碼 (.NET 9.0)
+│   │   ├── Auth/                        # 跨廠認證降級代理、JWT/API-Key/NTLM 驗證
+│   │   ├── Cache/                       # Memory & Redis 快取抽象
+│   │   ├── Configuration/               # 選項驗證器與部門合約規範
+│   │   ├── Downstream/                  # 下游服務 HTTP 調用與彈性恢復
+│   │   ├── Hosting/                     # AddMcpGateway / RunMcpGatewayAsync 宿主整合
+│   │   ├── Observability/               # Prometheus 指標與健康檢查
+│   │   ├── Subsystems/                  # IMcpSubsystemRegistry 子系統隔離與端點分流引擎
+│   │   ├── Tools/                       # ToolBase 基礎設施與啟動驗證
+│   │   └── Validation/                  # 啟動時規範合規檢查
+│   ├── McpGateway.Analyzers/            # Roslyn 靜態分析器與代碼修復 (.NET Standard 2.0)
+│   │   ├── McpServerToolAnalyzer.cs     # MCP001: 工具類別必須標註 [McpServerToolType]
+│   │   ├── McpToolContractAnalyzer.cs   # MCP002: 工具方法與 DTO 契約規範
+│   │   └── McpSubsystemToolNamingAnalyzer.cs # MCP003: 子系統工具三段式命名規範 ({dept}_{system}_{action})
+│   └── MockOcelotApi/                   # 整合測試專用之 Mock 下游 API 伺服器
+├── templates/                           # 部門與子系統腳手架範本樹
+│   ├── template-host/                   # 薄宿主 Web App 專案範本 (含 .vscode 除錯設定與 HelloTool)
+│   ├── template-module/                 # 子系統模組類別庫範本 (含 Consul KV/服務發現雙解析器、mcp-glossary.json)
+│   ├── template-module-tests/           # 子系統單元測試專案範本
+│   ├── scaffold.ps1                     # 部門 Modular Monorepo 骨架一鍵產生腳本
+│   └── add-module.ps1                   # 增量子系統模組與單元測試自動產生腳本
 ├── tests/
-│   ├── CorePackageTest/                 # Package contract tests
-│   ├── McpGateway.Core.IntegrationTests/ # Integration tests with WireMock / Mock API
-│   └── k6/                              # Performance and load testing scripts
-├── docs/                                # ADRs, specs, and architectural documents
-└── McpGateway.Core.sln                  # Main Visual Studio Solution
+│   ├── McpGateway.Analyzers.Tests/      # Roslyn 分析器與 CodeFix 單元測試
+│   ├── McpGateway.Core.IntegrationTests/# 核心隔離引擎與 WireMock / Mock API 整合測試
+│   └── k6/                              # 效能與高承載壓力測試腳本
+├── docs/                                # 架構 ADR、需求規範與決策地圖
+└── McpGateway.Core.sln                  # 方案總檔
 ```
 
 ---
 
-## 🚀 建立新部門 Gateway (Department Scaffolding)
+## 🚀 腳手架建立指南 (Scaffolding Guide)
 
-依據 **[ADR-009](./docs/architecture/adr/ADR-009-department-gateway-split.md)** 獨立儲存庫原則與 **[SPEC-SCAFFOLD-001](./docs/specs/spec-department-scaffold.md)** 標準化規範，本專案提供自動化腳手架腳本 [`templates/scaffold.ps1`](./templates/scaffold.ps1)，協助各製造與業務部門（如 EAP、SPC、EDC、報表等）一鍵產出符合企業架構規範、開箱即用的 `McpGateway.<Department>` C# .NET 9 專案骨架。
+依據 **[ADR-014](./docs/architecture/adr/ADR-014-intra-department-subsystem-modules.md)** 規範，部門閘道器建置採用「**初次建立部門 Monorepo 骨架** $\rightarrow$ **後續增量擴充業務子系統模組**」兩段式工作流。
 
-### 📌 快速產生範例
+### 第一步：建立部門 Modular Monorepo 骨架 (`scaffold.ps1`)
 
-開啟 PowerShell 執行腳本（建議將 `-OutDir` 設為與 `McpGateway.Core` 同層之目錄）：
+執行 `templates/scaffold.ps1` 自動建立部門根目錄方案、薄宿主專案與 VS Code 除錯設定：
 
 ```powershell
-# 1. (建議) 先使用 -DryRun 預覽預計產生的檔案清單與設定映射
+# 1. (建議) 先使用 -DryRun 預覽預計產生的檔案清單與路徑映射
 pwsh .\templates\scaffold.ps1 `
-    -Department eap `
+    -Department fab2 `
     -Port 5200 `
-    -ToolName eap_query_lot `
     -AuthProvider API-KEY `
     -UseConsul $true `
     -Solution `
     -OutDir .. `
     -DryRun
 
-# 2. 正式執行專案產生
+# 2. 正式產生部門方案骨架
 pwsh .\templates\scaffold.ps1 `
-    -Department eap `
+    -Department fab2 `
     -Port 5200 `
-    -ToolName eap_query_lot `
     -AuthProvider API-KEY `
     -UseConsul $true `
     -Solution `
     -OutDir ..
 ```
 
-### 💡 做法與參數建議 (Best Practices)
-
-| 參數 | 必填 | 預設值 | 做法建議與規範說明 |
-|---|---|---|---|
-| `-Department` | **是** | - | **部門代碼**：長度需介於 2~20 字元，不可使用保留字（如 `core`, `test`, `gateway`, `common`, `shared` 等）。產出專案命名採用 PascalCase（如 `eap` $\rightarrow$ `McpGateway.Eap`），設定檔中則維持小寫。 |
-| `-Port` | **是** | - | **服務通訊埠**：範圍 1024~65535。執行前請先查閱 [`templates/ports.md`](./templates/ports.md) 確認並登記部門專屬 Port，避免多部門本地開發或佈署時發生通訊埠衝突。 |
-| `-ToolName` | **是** | - | **主要 MCP 工具名稱**：必須為小寫 `snake_case` 且**強制以 `<department>_` 為前綴**（例如 `eap_query_lot`）。符合 ADR-009 D6 與 Core `ToolStartupValidator` 啟動強制檢核，避免多 Gateway 掛載時同名工具碰撞。 |
-| `-AuthProvider` | 否 | `API-KEY` | **認證模式**：支援 `API-KEY`、`JWT`、`NTLM`、`None`。企業內部整合建議採用預設 `API-KEY`（內建 UAC 驗證、降級容錯與記憶體快取）。 |
-| `-UseConsul` | 否 | `$true` | **服務發現整合**：預設啟用 Consul 集中廠別端點解析。若部門不需依賴 Consul，設定為 `$false` 即可自動切換至本地 `FallbackShops` 設定。 |
-| `-Solution` | 否 | `$false` | **方案檔**：若指定 `-Solution`，會自動在目標資料夾建立 `McpGateway.<Department>.sln` 並掛載專案檔，方便 Visual Studio 直接開啟。 |
-| `-OutDir` | 否 | `.\` | **輸出路徑**：建議指向獨立工作目錄（例如 `..` 或獨立部門 Git Repo），確保符合獨立 Repository 演進之架構原則。 |
-| `-DryRun` | 否 | `$false` | **預覽模式**：僅列出設定參數與預計產生的檔案清單，不寫入磁碟，適合初次使用確認。 |
-| `-Force` | 否 | `$false` | **覆寫防護**：若目標目錄已存在且非空，預設會主動報錯保護；僅在確認覆寫時指定 `-Force`。 |
-
-### 🛠️ 專案產生後續步驟
-
-專案產生完成後，即可依照標準流程進行驗證與業務邏輯實作：
-
-```powershell
-# 1. 切換至新建立的部門專案目錄
-cd ..\McpGateway.Eap
-
-# 2. 還原與驗證 NuGet 套件 (專案內建 nuget.config 已設定 BaGet 公司私有庫)
-dotnet restore
-
-# 3. 驗證專案編譯與 Roslyn 分析器 (自動套用 McpGateway.Analyzers 規則)
-dotnet build
-
-# 4. 啟動服務並驗證內建工具 (HelloTool 與 eap_query_lot)
-dotnet run
-```
-
-啟動後服務將監聽於指定通訊埠（如 `http://localhost:5200/mcp`），後續開發業務 Tool 與 DTO 時，強烈建議搭配 [`mcp-tool-dto-builder`](./docs/ai-tools/skills/mcp-tool-dto-builder/SKILL.md) 遵循 [ADR-010](./docs/architecture/adr/ADR-010-mcp-tool-field-standardization-and-structured-dto.md) 詞彙標準化規範。
+產出結構包含：
+- 方案根目錄：`McpGateway.<Dept>.sln`、`.gitignore`、`nuget.config`、`README.md`
+- VS Code 除錯組態：`.vscode/launch.json` 與 `.vscode/tasks.json`（已預先綁定 Host 專案路徑）
+- 薄宿主專案：`src/McpGateway.<Dept>.Host/`，內建煙霧測試工具 `HelloTool`（端點：`http://localhost:<Port>/<dept>/mcp`）
 
 ---
 
-## 🛠️ Usage in Department Gateways
+### 第二步：增量建立子系統模組與測試專案 (`add-module.ps1`)
 
-A department gateway reference `McpGateway.Core` and registers its MCP tools:
+當部門內有新的業務系統（如 MES、EDC、SPC、EAP 等）需要納入 MCP 閘道器時，使用 `templates/add-module.ps1` 增量擴充：
 
-### `Program.cs` Example
+```powershell
+# 增量新增 MES 子系統模組
+pwsh .\templates\add-module.ps1 `
+    -Department fab2 `
+    -System mes `
+    -ToolName fab2_mes_query_lot `
+    -RepoRoot ..\McpGateway.Fab2
+```
+
+#### 腳本自動化完成事項：
+1. **模組類別庫專案**：在 `src/McpGateway.Fab2.Mes/` 建立專案檔、依賴注入擴充方法 `AddMesSubsystem()`、DTO 與工具類別。
+2. **單元測試專案**：在 `tests/McpGateway.Fab2.Mes.Tests/` 自動建立 xUnit 測試專案，包含工具方法測試與 DI 註冊測試。
+3. **方案註冊**：自動透過 `dotnet sln add` 將模組專案與測試專案掛載至根目錄方案檔。
+4. **Consul 下游位址解析雙模式**：範本內建 `IDownstreamUrlResolver` 介面，提供兩種企業級落地範例：
+   - **範例 1 (`ConsulKvDownstreamResolver`)**：透過 Consul Key-Value 集中式設定動態讀取 Downstream Base URL。
+   - **範例 2 (`ConsulServiceDiscoveryDownstreamResolver`)**：透過 Consul Service Discovery 查詢健康服務實例以解析位址。
+5. **標準化詞庫**：包含符合 ADR-010 規範之 `mcp-glossary.json` 最簡詞庫陣列定義。
+
+---
+
+## 🛠️ 薄宿主端點掛載與子系統使用方式
+
+在部門薄宿主專案 `McpGateway.<Department>.Host/Program.cs` 中，僅需引用子系統模組並啟用端點映射：
+
 ```csharp
-using ModelContextProtocol.AspNetCore;
 using McpGateway.Core.Hosting;
+using McpGateway.Core.Subsystems;
+using McpGateway.Fab2.Mes;
+using McpGateway.Fab2.Edc;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// 1. Add McpGateway Core services (Auth, Audit, Metrics)
-builder.Services.AddMcpGateway();
+// 1. 註冊 McpGateway 核心服務
+builder.Services.AddMcpGateway(options =>
+{
+    options.Department = "fab2";
+    options.RoutePrefix = "/fab2/mcp";
+});
 
-// 2. Add MCP Server and register department tools
-builder.Services.AddMcpServer()
-    .WithHttpTransport(options => options.Stateless = true)
-    .WithTools<QueryWipTool>();
+// 2. 註冊各業務子系統 (透過 Add<System>Subsystem 註冊工具與白名單隔離)
+builder.Services.AddMesSubsystem(builder.Configuration);
+builder.Services.AddEdcSubsystem(builder.Configuration);
 
 var app = builder.Build();
 
-// 3. Map MCP endpoints and start gateway
-app.MapMcp();
+// 3. 映射端點
+app.MapMcp();             // 部門 Ingress 端點：/fab2/mcp (彙整曝露全部子系統工具)
+app.MapMcpSubsystems();   // 子系統專屬隔離端點：/fab2/mes/mcp, /fab2/edc/mcp
+
 await app.RunMcpGatewayAsync();
 ```
+
+---
+
+## 🛡️ 編譯期分析器治理 (Roslyn Analyzers)
+
+專案包含 `McpGateway.Analyzers`，在開發與 CI 編譯階段即時防堵架構異味與命名違規：
+
+| 規則代碼 | 嚴重性 | 診斷名稱 | 規範說明 |
+|---|---|---|---|
+| **MCP001** | Error | `McpServerToolTypeRequired` | MCP 工具類別必須標註 `[McpServerToolType]` 特性。 |
+| **MCP002** | Warning | `McpToolContractConvention` | MCP 工具方法參數與回傳型別必須符合結構化 DTO 契約規範。 |
+| **MCP003** | Warning | `McpSubsystemToolNaming` | **子系統工具三段式命名規範**：子系統專案中的 MCP 工具名稱強制遵循 `{department}_{system}_{action}`（全小寫 ASCII、英數字與底線）。Visual Studio / VS Code 支援一鍵重構修正 (CodeFix Provider)。 |
 
 ---
 
@@ -164,11 +198,9 @@ await app.RunMcpGatewayAsync();
 
 👉 **[`mcp-tool-dto-builder`](./docs/ai-tools/skills/mcp-tool-dto-builder/SKILL.md)**（目錄路徑：`docs/ai-tools/skills/mcp-tool-dto-builder`）
 
-### 核心功能與優勢：
-- **動態詞庫探測 (Dynamic Vocabulary Probe)**：自動解析中央 `Tier1Vocabulary.cs` 核心製造業字典（本地工作區或遠端 Gitea Tag）。
-- **欄位標準化與別名校正 (Canonicalization)**：自動識別歷史別名（如 `prod_id` $\rightarrow$ `ProductId`、`wip_qty` $\rightarrow$ `QuantityInProcess`）並修正為符合 [ADR-010](./docs/architecture/adr/ADR-010-mcp-tool-field-standardization-and-structured-dto.md) 的標準詞彙。
-- **強型別不可變契約 (Structured Content)**：一鍵產出 Positional Record DTO、補齊繁體中文 `[Description]` 特性，並自動生成 `[McpServerToolType]` 工具方法骨架。
-- **中央詞庫回饋提報 (PR Automation)**：自動進行衝突防呆檢核，並可透過 `tea` CLI / Git 向中央儲存庫發起詞庫擴充 PR。
+- **動態詞庫探測**：自動解析核心製造業字典 `Tier1Vocabulary.cs`。
+- **欄位標準化與別名校正**：自動將歷史欄位（如 `prod_id`、`wip_qty`）校正為符合 [ADR-010](./docs/architecture/adr/ADR-010-mcp-tool-field-standardization-and-structured-dto.md) 的標準詞彙。
+- **不可變結構化契約**：一鍵產出 Positional Record DTO、繁體中文 `[Description]` 特性與工具骨架。
 
 ---
 
@@ -184,19 +216,20 @@ await app.RunMcpGatewayAsync();
 | [ADR-006](./docs/architecture/adr/ADR-006-security-model.md) | Authentication proxy pattern | ✅ Approved |
 | [ADR-009](./docs/architecture/adr/ADR-009-department-gateway-split.md) | Per-department gateway repository split | ✅ Approved |
 | [ADR-010](./docs/architecture/adr/ADR-010-mcp-tool-field-standardization-and-structured-dto.md) | MCP Tool 欄位命名標準化、結構化 DTO 回傳與編譯期分析器治理 | ✅ Approved |
+| [ADR-014](./docs/architecture/adr/ADR-014-intra-department-subsystem-modules.md) | 部門內部多子系統模組化、端點分流隔離 (`/{dept}/{system}/mcp`) 與 MCP003 命名規範 | ✅ Approved |
 
 ---
 
 ## 🧪 Testing & Verification
 
-```bash
-# Build the Core solution
+```powershell
+# 建置整個方案
 dotnet build McpGateway.Core.sln
 
-# Run Core integration and package tests
+# 執行所有核心整合測試與 Roslyn 分析器測試
 dotnet test McpGateway.Core.sln
 
-# Run Mock Ocelot API for local testing
+# 啟動測試用 Mock Ocelot API 服務
 dotnet run --project src/MockOcelotApi/MockOcelotApi.csproj
 ```
 
@@ -205,3 +238,4 @@ dotnet run --project src/MockOcelotApi/MockOcelotApi.csproj
 ## 📄 License
 
 MIT License — see [LICENSE](LICENSE) file for details.
+
