@@ -222,11 +222,17 @@ if ($DryRun) {
     Write-Host "  [FILE] .gitignore" -ForegroundColor Green
     Write-Host "  [FILE] nuget.config" -ForegroundColor Green
     Write-Host "  [FILE] README.md" -ForegroundColor Green
+    Write-Host "  [DIR ] .vscode" -ForegroundColor DarkGray
+    Write-Host "  [FILE] .vscode/launch.json" -ForegroundColor Green
+    Write-Host "  [FILE] .vscode/tasks.json" -ForegroundColor Green
     Write-Host "  [DIR ] src/$hostProjectName" -ForegroundColor DarkGray
 
     $templateItems = Get-ChildItem -Recurse $templateHostRoot
     foreach ($item in $templateItems) {
         if ($item.Name -eq 'README.root.md') {
+            continue
+        }
+        if ($item.FullName.StartsWith((Join-Path $templateHostRoot ".vscode"))) {
             continue
         }
         $relPath = $item.FullName.Substring($templateHostRoot.Length).TrimStart('\', '/')
@@ -258,6 +264,9 @@ $allHostTemplateItems = Get-ChildItem -Recurse $templateHostRoot
 
 foreach ($item in $allHostTemplateItems) {
     if ($item.Name -eq 'README.root.md') {
+        continue
+    }
+    if ($item.FullName.StartsWith((Join-Path $templateHostRoot ".vscode"))) {
         continue
     }
 
@@ -300,7 +309,7 @@ foreach ($item in $allHostTemplateItems) {
     }
 }
 
-# 產生方案根目錄通用檔案 (.gitignore, nuget.config, README.md)
+# 產生方案根目錄通用檔案 (.gitignore, nuget.config, README.md, .vscode)
 $rootGitIgnorePath = Join-Path $targetDirPath ".gitignore"
 $hostGitIgnore = Join-Path $templateHostRoot ".gitignore"
 if (Test-Path $hostGitIgnore) {
@@ -321,6 +330,23 @@ if (Test-Path $rootReadmeTemplate) {
     }
     $rootReadmePath = Join-Path $targetDirPath "README.md"
     [System.IO.File]::WriteAllText($rootReadmePath, $rootReadmeContent, [System.Text.Encoding]::UTF8)
+}
+
+# 產生方案根目錄 .vscode 除錯與建置設定 (launch.json, tasks.json)
+$templateVsCodeDir = Join-Path $templateHostRoot ".vscode"
+if (Test-Path $templateVsCodeDir) {
+    $targetVsCodeDir = Join-Path $targetDirPath ".vscode"
+    if (-not (Test-Path $targetVsCodeDir)) {
+        New-Item -ItemType Directory -Path $targetVsCodeDir -Force | Out-Null
+    }
+    Get-ChildItem -Path $templateVsCodeDir -File | ForEach-Object {
+        $vscodeContent = Get-Content $_.FullName -Raw
+        foreach ($entry in $replacementList) {
+            $vscodeContent = $vscodeContent.Replace($entry.Key, $entry.Value)
+        }
+        $destFile = Join-Path $targetVsCodeDir $_.Name
+        [System.IO.File]::WriteAllText($destFile, $vscodeContent, [System.Text.Encoding]::UTF8)
+    }
 }
 
 # 產生 .sln 方案並加入 Host 專案

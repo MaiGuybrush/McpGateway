@@ -194,9 +194,13 @@ catch {
     # Fallback to default
 }
 
-# 6. 計算子系統專案路徑與衝突防護
+# 6. 計算子系統與測試專案路徑與衝突防護
 $subsystemDirPath = Join-Path $resolvedTargetDir "src\$subsystemProjectName"
 $subsystemCsprojPath = Join-Path $subsystemDirPath "$subsystemProjectName.csproj"
+
+$testsProjectName = "McpGateway.$pascalDept.$pascalSystem.Tests"
+$testsDirPath = Join-Path $resolvedTargetDir "tests\$testsProjectName"
+$testsCsprojPath = Join-Path $testsDirPath "$testsProjectName.csproj"
 
 if (Test-Path $subsystemDirPath) {
     $existingItems = Get-ChildItem $subsystemDirPath -Force -ErrorAction SilentlyContinue
@@ -233,6 +237,8 @@ if (-not (Test-Path $templateModuleRoot)) {
     exit 1
 }
 
+$templateModuleTestsRoot = Join-Path $PSScriptRoot "template-module-tests"
+
 # 8. DryRun 預覽模式
 if ($DryRun) {
     Write-Host "================================================================================" -ForegroundColor Cyan
@@ -241,6 +247,7 @@ if ($DryRun) {
     Write-Host "  部門代號:    $pascalDept ($deptLower)"
     Write-Host "  子系統代號:  $pascalSystem ($systemLower)"
     Write-Host "  子系統專案:  src/$subsystemProjectName"
+    Write-Host "  測試專案:    tests/$testsProjectName"
     Write-Host "  MCP 工具名:  $fullToolName"
     Write-Host "  工具類別:    ${toolClass}Tool"
     Write-Host "  Core 版本:   $coreVersion"
@@ -264,10 +271,28 @@ if ($DryRun) {
         }
     }
 
+    if (Test-Path $templateModuleTestsRoot) {
+        $allTestItems = Get-ChildItem -Recurse $templateModuleTestsRoot
+        foreach ($item in $allTestItems) {
+            $relPath = $item.FullName.Substring($templateModuleTestsRoot.Length).TrimStart('\', '/')
+            $destRelPath = $relPath
+            foreach ($r in $pathReplacements) {
+                $destRelPath = $destRelPath.Replace($r.Key, $r.Value)
+            }
+            $fullRel = "tests\$testsProjectName\$destRelPath"
+            if ($item.PSIsContainer) {
+                Write-Host "  [DIR ] $fullRel" -ForegroundColor DarkGray
+            } else {
+                Write-Host "  [FILE] $fullRel" -ForegroundColor Green
+            }
+        }
+    }
+
     Write-Host "--------------------------------------------------------------------------------"
     Write-Host "預計執行之自動裝配 (Auto-Wiring) 操作：" -ForegroundColor Yellow
     if ($slnPath) {
         Write-Host "  [SLN ] dotnet sln `"$slnPath`" add `"src\$subsystemProjectName\$subsystemProjectName.csproj`"" -ForegroundColor Cyan
+        Write-Host "  [SLN ] dotnet sln `"$slnPath`" add `"tests\$testsProjectName\$testsProjectName.csproj`"" -ForegroundColor Cyan
     }
     Write-Host "  [REF ] dotnet add `"$hostCsprojPath`" reference `"src\$subsystemProjectName\$subsystemProjectName.csproj`"" -ForegroundColor Cyan
     Write-Host "  [CODE] 在 $hostProgramPath 注入 'using McpGateway.$pascalDept.$pascalSystem;'" -ForegroundColor Cyan
@@ -310,6 +335,41 @@ foreach ($item in $allModuleItems) {
     }
 }
 
+# 9.1 建立測試專案目錄與複製模板檔案
+if (Test-Path $templateModuleTestsRoot) {
+    if (-not (Test-Path $testsDirPath)) {
+        New-Item -ItemType Directory -Path $testsDirPath -Force | Out-Null
+    }
+
+    $allTestItems = Get-ChildItem -Recurse $templateModuleTestsRoot
+    foreach ($item in $allTestItems) {
+        $relPath = $item.FullName.Substring($templateModuleTestsRoot.Length).TrimStart('\', '/')
+        $destRelPath = $relPath
+        foreach ($r in $pathReplacements) {
+            $destRelPath = $destRelPath.Replace($r.Key, $r.Value)
+        }
+        $destFullPath = Join-Path $testsDirPath $destRelPath
+
+        if ($item.PSIsContainer) {
+            if (-not (Test-Path $destFullPath)) {
+                New-Item -ItemType Directory -Path $destFullPath -Force | Out-Null
+            }
+        } else {
+            $parentDir = Split-Path $destFullPath -Parent
+            if (-not (Test-Path $parentDir)) {
+                New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
+            }
+
+            $content = Get-Content $item.FullName -Raw
+            foreach ($entry in $replacementList) {
+                $content = $content.Replace($entry.Key, $entry.Value)
+            }
+
+            [System.IO.File]::WriteAllText($destFullPath, $content, [System.Text.Encoding]::UTF8)
+        }
+    }
+}
+
 # 10. 自動裝配管線連結 (Auto-Wiring)
 Write-Host "================================================================================" -ForegroundColor Cyan
 Write-Host "  開始執行子系統模組自動裝配 (Auto-Wiring)..." -ForegroundColor Cyan
@@ -317,10 +377,14 @@ Write-Host "====================================================================
 
 # 10.1 方案註冊 (dotnet sln add)
 if ($slnPath -and (Test-Path $slnPath)) {
-    Write-Host "[1/4] 將子系統專案註冊至方案檔..." -ForegroundColor Yellow
+    Write-Host "[1/4] 將子系統與測試專案註冊至方案檔..." -ForegroundColor Yellow
     try {
         $slnOutput = dotnet sln $slnPath add $subsystemCsprojPath 2>&1
         Write-Host "      $slnOutput" -ForegroundColor Gray
+        if (Test-Path $testsCsprojPath) {
+            $slnTestOutput = dotnet sln $slnPath add $testsCsprojPath 2>&1
+            Write-Host "      $slnTestOutput" -ForegroundColor Gray
+        }
     }
     catch {
         Write-Warning "加入方案時發生非預期錯誤: $_"

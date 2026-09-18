@@ -29,7 +29,6 @@ public class McpSubsystemToolNamingAnalyzer : DiagnosticAnalyzer
         "Mock"
     };
 
-    private static readonly Regex ValidToolNameRegex = new("^[a-z0-9]+_[a-z0-9]+_[a-z0-9_]+$", RegexOptions.Compiled);
     private static readonly Regex AllowedCharsRegex = new("^[a-z0-9_]+$", RegexOptions.Compiled);
 
     public static readonly DiagnosticDescriptor Rule = new(

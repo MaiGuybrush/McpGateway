@@ -121,31 +121,7 @@ public class McpSubsystemRegistry : IMcpSubsystemRegistry
         var normalizedTool = toolName.Trim().ToLowerInvariant();
         var normalizedSubsystem = subsystemName.Trim().ToLowerInvariant();
 
-        // 1. Check explicit whitelist
-        if (explicitAllowedNames != null && explicitAllowedNames.Contains(normalizedTool))
-        {
-            return true;
-        }
-
-        // 2. Check {department}_{system}_{action} standard convention
-        var segments = normalizedTool.Split(new[] { '_' }, StringSplitOptions.RemoveEmptyEntries);
-        if (segments.Length >= 3)
-        {
-            // Second segment is system
-            if (segments[1].Equals(normalizedSubsystem, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-        else if (segments.Length == 2)
-        {
-            // {system}_{action}
-            if (segments[0].Equals(normalizedSubsystem, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        return false;
+        // Strict explicit whitelist check: only tools explicitly registered for this subsystem are authorized
+        return explicitAllowedNames != null && explicitAllowedNames.Contains(normalizedTool);
     }
 }

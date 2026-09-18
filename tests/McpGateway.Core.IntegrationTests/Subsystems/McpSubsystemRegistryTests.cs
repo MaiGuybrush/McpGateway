@@ -16,6 +16,11 @@ public class McpSubsystemRegistryTests
     {
     }
 
+    [McpTool("mfg_mes_defect_report")]
+    private class DummyMesDefectTool
+    {
+    }
+
     [McpTool("mfg_wms_query_stock")]
     private class DummyWmsTool
     {
@@ -44,23 +49,31 @@ public class McpSubsystemRegistryTests
     [Theory]
     [InlineData("mes", "mfg_mes_query_lot", true)]
     [InlineData("mes", "MFG_MES_QUERY_LOT", true)]
-    [InlineData("mes", "mes_query", true)]
     [InlineData("mes", "mfg_wms_query_stock", false)]
-    [InlineData("mes", "wms_query", false)]
     [InlineData("wms", "mfg_wms_query_stock", true)]
     [InlineData("wms", "mfg_mes_query_lot", false)]
-    [InlineData("unknown", "mfg_mes_query_lot", false)]
-    public void IsToolAuthorized_NamingConventions_ValidatesProperly(string subsystem, string toolName, bool expected)
+    public void IsToolAuthorized_StrictExplicitWhitelist_ValidatesProperly(string subsystem, string toolName, bool expected)
     {
-        var isAuth = McpSubsystemRegistry.IsToolAuthorized(subsystem, toolName);
+        var whitelist = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            subsystem == "mes" ? "mfg_mes_query_lot" : "mfg_wms_query_stock"
+        };
+        var isAuth = McpSubsystemRegistry.IsToolAuthorized(subsystem, toolName, whitelist);
         Assert.Equal(expected, isAuth);
+    }
+
+    [Fact]
+    public void IsToolAuthorized_WithoutExplicitWhitelist_ReturnsFalse()
+    {
+        var isAuth = McpSubsystemRegistry.IsToolAuthorized("mes", "mfg_mes_query_lot", explicitAllowedNames: null);
+        Assert.False(isAuth);
     }
 
     [Fact]
     public void FilterToolsForSubsystem_FiltersToolCollectionBySubsystemWhitelist()
     {
         var registry = new McpSubsystemRegistry();
-        registry.Register(new McpSubsystemRegistration("mes", new[] { typeof(DummyMesTool) }));
+        registry.Register(new McpSubsystemRegistration("mes", new[] { typeof(DummyMesTool), typeof(DummyMesDefectTool) }));
         registry.Register(new McpSubsystemRegistration("wms", new[] { typeof(DummyWmsTool) }));
 
         // Create tools

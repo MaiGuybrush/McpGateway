@@ -1,3 +1,12 @@
 {
-  "__full_tool_name__": "查詢 __Department__ __System__ 現場之 __ToolClass__ 狀態"
+  "$schema": "./docs/mcp-glossary.schema.json",
+  "version": "1.0.0",
+  "terms": [
+    {
+      "name": "exampleField",
+      "pascalName": "ExampleField",
+      "description": "範例欄位說明，供子系統業務工具自訂擴充",
+      "category": "Domain"
+    }
+  ]
 }

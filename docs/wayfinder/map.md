@@ -32,7 +32,6 @@
 
 ## Not yet specified
 
-- **子系統單元與整合測試範本**：增量產生子系統時，是否連同產生對應的 `tests/McpGateway.<Dept>.<System>.Tests` 測試專案與測試 Mock。
 - **CODEOWNERS 與權限分離實作**：在 Git Repository 中依據 `src/McpGateway.<Dept>.<System>/` 路徑自動產生或更新 CODEOWNERS 配置。
 
 ## Out of scope

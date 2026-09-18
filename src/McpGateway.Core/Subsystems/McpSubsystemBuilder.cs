@@ -1,7 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Server;
 using McpGateway.Core.Hosting;
@@ -97,42 +95,6 @@ public class McpSubsystemBuilder
         }
 
         return this;
-    }
-
-    /// <summary>
-    /// Scans an assembly and registers all tool classes marked with MCP tool attributes.
-    /// </summary>
-    /// <param name="assembly">The assembly to scan.</param>
-    /// <returns>The builder instance for fluent chaining.</returns>
-    public McpSubsystemBuilder WithToolsFromAssembly(Assembly assembly)
-    {
-        ArgumentNullException.ThrowIfNull(assembly);
-
-        var toolTypes = assembly.GetTypes()
-            .Where(t => t.IsClass && !t.IsAbstract)
-            .Where(t =>
-                t.GetCustomAttributes().Any(a => a.GetType().Name is "McpToolAttribute" or "McpServerToolAttribute") ||
-                (t.BaseType?.IsGenericType == true && t.BaseType.GetGenericTypeDefinition() == typeof(ToolBase<,>)) ||
-                t.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static)
-                    .Any(m => m.GetCustomAttributes().Any(a => a.GetType().Name is "McpToolAttribute" or "McpServerToolAttribute")))
-            .ToList();
-
-        foreach (var toolType in toolTypes)
-        {
-            WithTools(toolType);
-        }
-
-        return this;
-    }
-
-    /// <summary>
-    /// Scans the assembly containing <typeparamref name="TMarker"/> and registers all tool classes.
-    /// </summary>
-    /// <typeparam name="TMarker">A type in the target assembly.</typeparam>
-    /// <returns>The builder instance for fluent chaining.</returns>
-    public McpSubsystemBuilder WithToolsFromAssembly<TMarker>()
-    {
-        return WithToolsFromAssembly(typeof(TMarker).Assembly);
     }
 
     /// <summary>

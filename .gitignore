@@ -403,8 +403,7 @@ out/
 
 # IDE
 .idea/
-*.iml
-.vscode/
+/.vscode/
 
 # OS
 .DS_Store
