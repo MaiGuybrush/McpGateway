@@ -48,6 +48,7 @@ param (
     [string]$ToolName,
 
     [Parameter(Mandatory = $false, HelpMessage = "部門方案或其上層目錄路徑 (預設為當前目錄)")]
+    [Alias('RepoRoot', 'TargetDir')]
     [string]$OutDir = '.\',
 
     [Parameter(Mandatory = $false, HelpMessage = "預覽模式 (不寫入磁碟與修改方案)")]

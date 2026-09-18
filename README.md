@@ -127,18 +127,39 @@ pwsh .\templates\scaffold.ps1 `
 當部門內有新的業務系統（如 MES、EDC、SPC、EAP 等）需要納入 MCP 閘道器時，使用 `templates/add-module.ps1` 增量擴充：
 
 ```powershell
-# 增量新增 MES 子系統模組
+# 情境 A：於 McpGateway.Core 根目錄執行（指向部門方案目錄）
 pwsh .\templates\add-module.ps1 `
     -Department fab2 `
     -System mes `
     -ToolName fab2_mes_query_lot `
-    -RepoRoot ..\McpGateway.Fab2
+    -OutDir ..\McpGateway.Fab2
+
+# 亦支援別名 -RepoRoot：
+# pwsh .\templates\add-module.ps1 -Department fab2 -System mes -ToolName fab2_mes_query_lot -RepoRoot ..\McpGateway.Fab2
+
+# 情境 B：已切換至部門專案目錄 (cd ..\McpGateway.Fab2)
+# pwsh <PathToCore>\templates\add-module.ps1 -Department fab2 -System mes -ToolName fab2_mes_query_lot
 ```
+
+#### 💡 `add-module.ps1` 參數說明
+
+| 參數 | 必填 | 預設值 | 說明 |
+|---|---|---|---|
+| `-Department` | **是** | - | 部門代號（如 `fab2`、`eap`），長度 2~20 字元，不可為保留字。 |
+| `-System` | **是** | - | 子系統代號（如 `mes`、`edc`、`spc`），長度 2~20 字元，不可為保留字。 |
+| `-ToolName` | **是** | - | 主要 MCP 工具名稱，建議遵循三段式 `{dept}_{system}_{action}`（例如 `fab2_mes_query_lot`）。 |
+| `-OutDir` | 否 | `.\` | 部門方案目錄或其上層路徑（支援別名 `-RepoRoot`、`-TargetDir`）。預設會自動在目標路徑或當前目錄尋找 `src/McpGateway.<Dept>.Host`。 |
+| `-DryRun` | 否 | `$false` | 預覽模式，僅輸出預計建立與修改之檔案清單，不寫入磁碟。 |
+| `-Force` | 否 | `$false` | 若子系統目錄已存在，強制覆寫。 |
 
 #### 腳本自動化完成事項：
 1. **模組類別庫專案**：在 `src/McpGateway.Fab2.Mes/` 建立專案檔、依賴注入擴充方法 `AddMesSubsystem()`、DTO 與工具類別。
 2. **單元測試專案**：在 `tests/McpGateway.Fab2.Mes.Tests/` 自動建立 xUnit 測試專案，包含工具方法測試與 DI 註冊測試。
-3. **方案註冊**：自動透過 `dotnet sln add` 將模組專案與測試專案掛載至根目錄方案檔。
+3. **自動裝配與方案註冊**：
+   - 自動透過 `dotnet sln add` 將模組專案與測試專案掛載至根目錄方案檔。
+   - 自動透過 `dotnet add reference` 為 Host 專案加入子系統模組參考。
+   - 自動在 Host 的 `Program.cs` 注入 `builder.Services.Add<System>Subsystem(builder.Configuration);`。
+   - 自動在 Host 的 `appsettings.json` 加入 `Systems:<system>` 預設組態區段。
 4. **Consul 下游位址解析雙模式**：範本內建 `IDownstreamUrlResolver` 介面，提供兩種企業級落地範例：
    - **範例 1 (`ConsulKvDownstreamResolver`)**：透過 Consul Key-Value 集中式設定動態讀取 Downstream Base URL。
    - **範例 2 (`ConsulServiceDiscoveryDownstreamResolver`)**：透過 Consul Service Discovery 查詢健康服務實例以解析位址。
